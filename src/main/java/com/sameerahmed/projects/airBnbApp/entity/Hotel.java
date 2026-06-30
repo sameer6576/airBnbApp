@@ -37,9 +37,16 @@ public class Hotel {
     private LocalDateTime updatedAt;
 
     @Embedded
-    private HotelContactInfo contactInfo; // fields will be created like: contact_info_address
+    private HotelContactInfo contactInfo;
 
     @Column(nullable = false)
     private Boolean active;
+
+    @ManyToOne
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    @OneToMany(mappedBy = "hotel")
+    private List<Room> rooms;
 
 }
