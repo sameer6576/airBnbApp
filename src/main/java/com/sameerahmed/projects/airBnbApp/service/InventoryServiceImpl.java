@@ -1,14 +1,22 @@
 package com.sameerahmed.projects.airBnbApp.service;
 
+import com.sameerahmed.projects.airBnbApp.dto.HotelDto;
+import com.sameerahmed.projects.airBnbApp.dto.HotelSearchRequest;
+import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Inventory;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -16,6 +24,7 @@ import java.time.LocalDate;
 public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final ModelMapper modelMapper;
 
     @Override
     public void initializeRoomForAYear(Room room) {
@@ -38,8 +47,29 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public void deleteFutureInventories(Room room) {
-        LocalDate today = LocalDate.now();
-        inventoryRepository.deleteByDateAfterAndRoom(today, room);
+    public void deleteAllInventories(Room room) {
+        inventoryRepository.deleteByRoom(room);
+    }
+
+    @Override
+    public Page<HotelDto> searchHotels(HotelSearchRequest hotelSearchRequest) {
+        Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
+        /*
+         * Criteria to return a valid inventory
+         * Return hotels with inventory which has
+         * startDate <= date <= endDate
+         * city
+         * availability: (totalCount - bookedCount) >= roomsCount
+         * closed = false
+         *
+         * group the response by room
+         * and get the response by unique hotels
+         * */
+        Long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate()) + 1;
+        Page<Hotel> hotelPage = inventoryRepository
+                .findHotelWithAvailableInventory(
+                        hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(),
+                        hotelSearchRequest.getEndDate(), hotelSearchRequest.getRoomsCount(), dateCount, pageable);
+        return hotelPage.map(element -> modelMapper.map(element, HotelDto.class));
     }
 }
