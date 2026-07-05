@@ -35,6 +35,7 @@ public class InventoryServiceImpl implements InventoryService {
                     .hotel(room.getHotel())
                     .room(room)
                     .bookedCount(0)
+                    .reservedCount(0)
                     .city(room.getHotel().getCity())
                     .date(today)
                     .price(room.getBasePrice())
@@ -53,6 +54,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public Page<HotelDto> searchHotels(HotelSearchRequest hotelSearchRequest) {
+        log.info("Searching hotels for {} city, from {} to {}",
+                hotelSearchRequest.getCity(),hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
         Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
         /*
          * Criteria to return a valid inventory

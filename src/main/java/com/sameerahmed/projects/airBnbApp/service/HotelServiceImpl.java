@@ -1,6 +1,8 @@
 package com.sameerahmed.projects.airBnbApp.service;
 
 import com.sameerahmed.projects.airBnbApp.dto.HotelDto;
+import com.sameerahmed.projects.airBnbApp.dto.HotelInfoDto;
+import com.sameerahmed.projects.airBnbApp.dto.RoomDto;
 import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -62,7 +65,7 @@ public class HotelServiceImpl implements HotelService {
         Hotel hotel = hotelRepository
                 .findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + id));
-        for (Room room: hotel.getRooms()){
+        for (Room room : hotel.getRooms()) {
             inventoryService.deleteAllInventories(room);
             roomRepository.deleteById(room.getId());
         }
@@ -78,9 +81,22 @@ public class HotelServiceImpl implements HotelService {
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + id));
         hotel.setActive(true);
 //        assuming only done once
-        for (Room room: hotel.getRooms()){
+        for (Room room : hotel.getRooms()) {
             inventoryService.initializeRoomForAYear(room);
         }
 
+    }
+
+    @Override
+    public HotelInfoDto getHotelInfoById(Long hotelId) {
+        Hotel hotel = hotelRepository
+                .findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + hotelId));
+        List<RoomDto> rooms = hotel.getRooms()
+                .stream()
+                .map((element) -> modelMapper.map(element, RoomDto.class))
+                .toList();
+
+        return new HotelInfoDto(modelMapper.map(hotel,HotelDto.class),rooms);
     }
 }
