@@ -1,13 +1,14 @@
 package com.sameerahmed.projects.airBnbApp.service;
 
-import com.sameerahmed.projects.airBnbApp.dto.HotelDto;
-import com.sameerahmed.projects.airBnbApp.dto.HotelPriceDto;
-import com.sameerahmed.projects.airBnbApp.dto.HotelSearchRequest;
+import com.sameerahmed.projects.airBnbApp.dto.*;
 import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Inventory;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
+import com.sameerahmed.projects.airBnbApp.entity.User;
+import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
 import com.sameerahmed.projects.airBnbApp.repository.HotelMinPriceRepository;
 import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
+import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
 import com.sameerahmed.projects.airBnbApp.strategy.PricingStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,11 +16,18 @@ import org.modelmapper.ModelMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+import static com.sameerahmed.projects.airBnbApp.util.AppUtils.getCurrentUser;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +37,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final ModelMapper modelMapper;
     private final HotelMinPriceRepository hotelMinPriceRepository;
+    private final RoomRepository roomRepository;
 
     @Override
     public void initializeRoomForAYear(Room room) {
@@ -59,7 +68,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public Page<HotelPriceDto> searchHotels(HotelSearchRequest hotelSearchRequest) {
         log.info("Searching hotels for {} city, from {} to {}",
-                hotelSearchRequest.getCity(),hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
+                hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
         Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
         /*
          * Criteria to return a valid inventory
@@ -78,5 +87,50 @@ public class InventoryServiceImpl implements InventoryService {
                         hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(),
                         hotelSearchRequest.getEndDate(), hotelSearchRequest.getRoomsCount(), dateCount, pageable);
         return hotelPage;
+    }
+
+    @Override
+    public List<InventoryDto> getAllInventoryByRoom(Long roomId) {
+
+        log.info("Getting all the inventory for room with roomID: {}", roomId);
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: " + roomId));
+
+        User user = getCurrentUser();
+
+        if (!Objects.equals(user.getId(), room.getHotel().getOwner().getId())) {
+            throw new AccessDeniedException("You are not the owner of the room with ID: " + roomId);
+        }
+
+        List<Inventory> inventoryList = inventoryRepository.findByRoomOrderByDate(room);
+
+        return inventoryList
+                .stream()
+                .map((element) -> modelMapper.map(element, InventoryDto.class))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void updateInventory(Long roomId, UpdateInventoryRequestDto updateInventoryRequestDto) {
+        log.info("Getting all the inventory for room with roomID: {} between date range: {} - {}", roomId, updateInventoryRequestDto.getStartDate(), updateInventoryRequestDto.getEndDate());
+
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: " + roomId));
+
+        User user = getCurrentUser();
+
+        if (!Objects.equals(user.getId(), room.getHotel().getOwner().getId())) {
+            throw new AccessDeniedException("You are not the owner of the room with ID: " + roomId);
+        }
+        inventoryRepository.getInventoryAndLockBeforeUpdate(roomId,
+                updateInventoryRequestDto.getStartDate(),
+                updateInventoryRequestDto.getEndDate());
+
+        inventoryRepository.updateInventory(roomId,
+                updateInventoryRequestDto.getStartDate(),
+                updateInventoryRequestDto.getEndDate(),
+                updateInventoryRequestDto.getClosed(),
+                updateInventoryRequestDto.getSurgeFactor());
     }
 }
