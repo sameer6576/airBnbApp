@@ -28,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.sameerahmed.projects.airBnbApp.util.AppUtils.getCurrentUser;
@@ -60,7 +61,40 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingDto initialiseBooking(BookingRequest bookingRequest) {
-        log.info("Initialising booking for hotel: {}, room: {}, date {} - {}", bookingRequest.getHotelId(), bookingRequest.getRoomId(), bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
+        return initialiseBooking(bookingRequest, null);
+    }
+
+    @Override
+    @Transactional
+    public BookingDto initialiseBooking(BookingRequest bookingRequest, String idempotencyKey) {
+        User currentUser = getCurrentUser();
+        String fingerprint = buildIdempotencyFingerprint(bookingRequest);
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            String scopedKey = currentUser.getId() + ":" + idempotencyKey.trim();
+            Optional<Booking> existing = bookingRepository.findByIdempotencyKey(scopedKey);
+            if (existing.isPresent()) {
+                Booking previous = existing.get();
+                if (!Objects.equals(previous.getIdempotencyFingerprint(), fingerprint)) {
+                    throw new IllegalArgumentException(
+                            "Idempotency-Key was already used with a different booking request");
+                }
+                log.info("Returning existing booking {} for idempotency key", previous.getId());
+                return modelMapper.map(previous, BookingDto.class);
+            }
+            return createNewBooking(bookingRequest, currentUser, scopedKey, fingerprint);
+        }
+
+        return createNewBooking(bookingRequest, currentUser, null, null);
+    }
+
+    private BookingDto createNewBooking(BookingRequest bookingRequest,
+                                        User currentUser,
+                                        String scopedIdempotencyKey,
+                                        String fingerprint) {
+        log.info("Initialising booking for hotel: {}, room: {}, date {} - {}",
+                bookingRequest.getHotelId(), bookingRequest.getRoomId(),
+                bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
 
         Hotel hotel = hotelRepository.findById(bookingRequest.getHotelId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + bookingRequest.getHotelId()));
@@ -69,36 +103,44 @@ public class BookingServiceImpl implements BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found with id: " + bookingRequest.getRoomId()));
 
         List<Inventory> inventoryList = inventoryRepository
-                .findAndLockAvailableInventory(bookingRequest.getRoomId(), bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate(), bookingRequest.getRoomsCount());
+                .findAndLockAvailableInventory(bookingRequest.getRoomId(), bookingRequest.getCheckInDate(),
+                        bookingRequest.getCheckOutDate(), bookingRequest.getRoomsCount());
         long daysCount = ChronoUnit.DAYS.between(bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate()) + 1;
         if (inventoryList.size() != daysCount) {
             throw new IllegalStateException("Room is not available anymore");
         }
 
-
-// reserve the room/update the booked count of inventories
-
         inventoryRepository.initBooking(bookingRequest.getRoomId(), bookingRequest.getCheckInDate(),
                 bookingRequest.getCheckOutDate(), bookingRequest.getRoomsCount());
 
         BigDecimal priceForOneRoom = pricingService.calculateTotalPrice(inventoryList);
-
         BigDecimal totalPrice = priceForOneRoom.multiply(BigDecimal.valueOf(bookingRequest.getRoomsCount()));
+
         Booking booking = Booking.builder()
                 .bookingStatus(BookingStatus.RESERVED)
                 .hotel(hotel)
                 .room(room)
                 .checkInDate(bookingRequest.getCheckInDate())
                 .checkOutDate(bookingRequest.getCheckOutDate())
-                .user(getCurrentUser())
+                .user(currentUser)
                 .roomsCount(bookingRequest.getRoomsCount())
                 .amount(totalPrice)
                 .guests(new HashSet<>())
                 .expiryWarningSent(false)
+                .idempotencyKey(scopedIdempotencyKey)
+                .idempotencyFingerprint(fingerprint)
                 .build();
 
         booking = bookingRepository.save(booking);
         return modelMapper.map(booking, BookingDto.class);
+    }
+
+    private String buildIdempotencyFingerprint(BookingRequest request) {
+        return request.getHotelId() + "|"
+                + request.getRoomId() + "|"
+                + request.getCheckInDate() + "|"
+                + request.getCheckOutDate() + "|"
+                + request.getRoomsCount();
     }
 
     @Override

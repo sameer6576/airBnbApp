@@ -54,6 +54,8 @@ With `app.seed.enabled=true`, startup seeds:
 
 ## Extra features
 
+- **Search filters** — `minPrice`, `maxPrice`, `minRating`, `minCapacity`, `amenities[]`, `sortBy` (`PRICE_ASC` | `PRICE_DESC` | `RATING_DESC`) on `POST /hotels/search`
+- **Idempotent booking init** — optional header `Idempotency-Key` on `POST /bookings/init` (retries return the same booking)
 - **Reviews** — `POST /bookings/{id}/reviews` after check-out; `GET /hotels/{id}/reviews`; hotel `averageRating` on search
 - **Wishlist** — `POST/DELETE /wishlists/hotels/{id}`, `GET /wishlists`
 - **Emails** — confirm / cancel / expiry warning (logged by default; enable SMTP via `app.mail.enabled` + `spring.mail.*`)

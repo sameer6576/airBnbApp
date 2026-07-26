@@ -23,9 +23,11 @@ public class HotelBookingController {
     private final BookingService bookingService;
 
     @PostMapping("/init")
-    @Operation(summary = "Initialize a booking and reserve inventory")
-    public ResponseEntity<BookingDto> initialiseBooking(@Valid @RequestBody BookingRequest bookingRequest) {
-        return ResponseEntity.ok(bookingService.initialiseBooking(bookingRequest));
+    @Operation(summary = "Initialize a booking and reserve inventory. Optional Idempotency-Key header makes retries safe.")
+    public ResponseEntity<BookingDto> initialiseBooking(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody BookingRequest bookingRequest) {
+        return ResponseEntity.ok(bookingService.initialiseBooking(bookingRequest, idempotencyKey));
     }
 
     @PostMapping("/{bookingId}/addGuests")

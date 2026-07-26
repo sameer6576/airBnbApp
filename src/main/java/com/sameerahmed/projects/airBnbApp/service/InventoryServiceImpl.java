@@ -15,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,27 +66,82 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public Page<HotelPriceDto> searchHotels(HotelSearchRequest hotelSearchRequest) {
-        log.info("Searching hotels for {} city, from {} to {}",
-                hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
-        Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
-        /*
-         * Criteria to return a valid inventory
-         * Return hotels with inventory which has
-         * startDate <= date <= endDate
-         * city
-         * availability: (totalCount - bookedCount) >= roomsCount
-         * closed = false
-         *
-         * group the response by room
-         * and get the response by unique hotels
-         * */
-        Long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate()) + 1;
-        Page<HotelPriceDto> hotelPage = hotelMinPriceRepository
-                .findHotelWithAvailableInventory(
-                        hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(),
-                        hotelSearchRequest.getEndDate(), hotelSearchRequest.getRoomsCount(), dateCount, pageable);
-        return hotelPage;
+    public Page<HotelPriceDto> searchHotels(HotelSearchRequest request) {
+        log.info("Searching hotels for {} city, from {} to {}, filters: minPrice={}, maxPrice={}, minRating={}, minCapacity={}, amenities={}, sort={}",
+                request.getCity(), request.getStartDate(), request.getEndDate(),
+                request.getMinPrice(), request.getMaxPrice(), request.getMinRating(),
+                request.getMinCapacity(), request.getAmenities(), request.getSortBy());
+
+        Long dateCount = ChronoUnit.DAYS.between(request.getStartDate(), request.getEndDate()) + 1;
+        List<HotelPriceDto> results = hotelMinPriceRepository.findHotelWithAvailableInventory(
+                request.getCity(),
+                request.getStartDate(),
+                request.getEndDate(),
+                request.getRoomsCount(),
+                dateCount,
+                request.getMinPrice(),
+                request.getMaxPrice(),
+                request.getMinRating(),
+                request.getMinCapacity()
+        );
+
+        List<String> requiredAmenities = request.getAmenities() == null ? List.of() :
+                request.getAmenities().stream()
+                        .filter(Objects::nonNull)
+                        .map(a -> a.trim().toLowerCase())
+                        .filter(a -> !a.isEmpty())
+                        .toList();
+
+        if (!requiredAmenities.isEmpty()) {
+            results = results.stream()
+                    .filter(dto -> hotelHasAllAmenities(dto.getHotel(), requiredAmenities))
+                    .collect(Collectors.toList());
+        }
+
+        HotelSearchRequest.SearchSort sortBy = request.getSortBy() != null
+                ? request.getSortBy()
+                : HotelSearchRequest.SearchSort.PRICE_ASC;
+
+        results = results.stream()
+                .sorted((a, b) -> compareSearchResults(a, b, sortBy))
+                .collect(Collectors.toList());
+
+        int page = request.getPage() == null ? 0 : request.getPage();
+        int size = request.getSize() == null ? 10 : request.getSize();
+        int from = Math.min(page * size, results.size());
+        int to = Math.min(from + size, results.size());
+        List<HotelPriceDto> pageContent = results.subList(from, to);
+
+        return new org.springframework.data.domain.PageImpl<>(
+                pageContent,
+                PageRequest.of(page, size),
+                results.size()
+        );
+    }
+
+    private boolean hotelHasAllAmenities(HotelDto hotel, List<String> requiredAmenities) {
+        if (hotel == null || hotel.getAmenities() == null) {
+            return false;
+        }
+        List<String> hotelAmenities = java.util.Arrays.stream(hotel.getAmenities())
+                .filter(Objects::nonNull)
+                .map(a -> a.trim().toLowerCase())
+                .toList();
+        return requiredAmenities.stream().allMatch(hotelAmenities::contains);
+    }
+
+    private int compareSearchResults(HotelPriceDto a, HotelPriceDto b, HotelSearchRequest.SearchSort sortBy) {
+        return switch (sortBy) {
+            case PRICE_DESC -> Double.compare(
+                    b.getPrice() != null ? b.getPrice() : 0,
+                    a.getPrice() != null ? a.getPrice() : 0);
+            case RATING_DESC -> Double.compare(
+                    b.getAverageRating() != null ? b.getAverageRating() : 0,
+                    a.getAverageRating() != null ? a.getAverageRating() : 0);
+            case PRICE_ASC -> Double.compare(
+                    a.getPrice() != null ? a.getPrice() : 0,
+                    b.getPrice() != null ? b.getPrice() : 0);
+        };
     }
 
     @Override
