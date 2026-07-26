@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -38,26 +39,36 @@ public class InventoryServiceImpl implements InventoryService {
     private final HotelMinPriceRepository hotelMinPriceRepository;
     private final RoomRepository roomRepository;
     private final HotelRepository hotelRepository;
+    private final HotelMinPriceService hotelMinPriceService;
 
     @Override
+    @Transactional
     public void initializeRoomForAYear(Room room) {
         LocalDate today = LocalDate.now();
         LocalDate endDate = today.plusYears(1);
+
+        List<Inventory> inventories = new ArrayList<>();
+
         for (; !today.isAfter(endDate); today = today.plusDays(1)) {
-            Inventory inventory = Inventory.builder()
-                    .hotel(room.getHotel())
-                    .room(room)
-                    .bookedCount(0)
-                    .reservedCount(0)
-                    .city(room.getHotel().getCity())
-                    .date(today)
-                    .price(room.getBasePrice())
-                    .surgeFactor(BigDecimal.ONE)
-                    .totalCount(room.getTotalCount())
-                    .closed(false)
-                    .build();
-            inventoryRepository.save(inventory);
+            inventories.add(
+                    Inventory.builder()
+                            .hotel(room.getHotel())
+                            .room(room)
+                            .bookedCount(0)
+                            .reservedCount(0)
+                            .city(room.getHotel().getCity())
+                            .date(today)
+                            .price(room.getBasePrice())
+                            .surgeFactor(BigDecimal.ONE)
+                            .totalCount(room.getTotalCount())
+                            .closed(false)
+                            .build()
+            );
         }
+
+        inventoryRepository.saveAllAndFlush(inventories);
+
+        hotelMinPriceService.updateHotelMinPrice(room.getHotel().getId());
     }
 
     @Override
@@ -187,6 +198,7 @@ public class InventoryServiceImpl implements InventoryService {
                 updateInventoryRequestDto.getEndDate(),
                 updateInventoryRequestDto.getClosed(),
                 updateInventoryRequestDto.getSurgeFactor());
+        hotelMinPriceService.updateHotelMinPrice(room.getHotel().getId());
     }
 
     @Override
@@ -199,6 +211,7 @@ public class InventoryServiceImpl implements InventoryService {
                 room.getBasePrice(),
                 room.getTotalCount()
         );
+        hotelMinPriceService.updateHotelMinPrice(room.getHotel().getId());
     }
 
     @Override
@@ -222,6 +235,7 @@ public class InventoryServiceImpl implements InventoryService {
                     request.getSurgeFactor()
             );
         }
+        hotelMinPriceService.updateHotelMinPrice(hotelId);
         log.info("Bulk updated inventory for hotel {} between {} and {}",
                 hotelId, request.getStartDate(), request.getEndDate());
     }

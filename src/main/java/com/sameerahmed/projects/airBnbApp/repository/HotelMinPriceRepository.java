@@ -15,26 +15,36 @@ import java.util.Optional;
 public interface HotelMinPriceRepository extends JpaRepository<HotelMinPrice, Long> {
 
     @Query("""
-            SELECT new com.sameerahmed.projects.airBnbApp.dto.HotelPriceDto(hmp.hotel, AVG(hmp.price))
+            SELECT new com.sameerahmed.projects.airBnbApp.dto.HotelPriceDto(
+                hmp.hotel,
+                AVG(hmp.price)
+            )
             FROM HotelMinPrice hmp
             WHERE hmp.hotel.city = :city
-                AND hmp.date BETWEEN :startDate AND :endDate
-                AND hmp.hotel.active = true
-                AND (:minRating IS NULL OR COALESCE(hmp.hotel.averageRating, 0) >= :minRating)
-                AND hmp.hotel IN (
-                    SELECT i.hotel
-                    FROM Inventory i
-                    WHERE i.city = :city
-                        AND i.date BETWEEN :startDate AND :endDate
-                        AND i.closed = false
-                        AND (i.totalCount - i.bookedCount - i.reservedCount) >= :roomsCount
-                        AND (:minCapacity IS NULL OR i.room.capacity >= :minCapacity)
-                    GROUP BY i.hotel, i.room
-                    HAVING COUNT(i.date) = :dateCount
-                )
+              AND hmp.hotel.active = true
+              AND hmp.date BETWEEN :startDate AND :endDate
+              AND (:minRating IS NULL OR COALESCE(hmp.hotel.averageRating,0) >= :minRating)
+            
+              AND hmp.hotel IN (
+            
+                  SELECT i.hotel
+                  FROM Inventory i
+                  WHERE i.city = :city
+                    AND i.date BETWEEN :startDate AND :endDate
+                    AND i.closed = false
+                    AND (i.totalCount - i.bookedCount - i.reservedCount) >= :roomsCount
+                    AND (:minCapacity IS NULL OR i.room.capacity >= :minCapacity)
+            
+                  GROUP BY i.hotel
+                  HAVING COUNT(DISTINCT i.date) = :dateCount
+            
+              )
+            
             GROUP BY hmp.hotel
-            HAVING (:minPrice IS NULL OR AVG(hmp.price) >= :minPrice)
-                AND (:maxPrice IS NULL OR AVG(hmp.price) <= :maxPrice)
+            
+            HAVING COUNT(hmp.date) = :dateCount
+               AND (:minPrice IS NULL OR AVG(hmp.price) >= :minPrice)
+               AND (:maxPrice IS NULL OR AVG(hmp.price) <= :maxPrice)
             """)
     List<HotelPriceDto> findHotelWithAvailableInventory(
             @Param("city") String city,
@@ -48,5 +58,5 @@ public interface HotelMinPriceRepository extends JpaRepository<HotelMinPrice, Lo
             @Param("minCapacity") Integer minCapacity
     );
 
-    Optional<HotelMinPrice> findByHotelAndDate(Hotel hotel, LocalDate date);
+    void deleteByHotel(Hotel hotel);
 }

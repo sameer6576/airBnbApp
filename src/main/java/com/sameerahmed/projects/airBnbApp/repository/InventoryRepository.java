@@ -3,6 +3,7 @@ package com.sameerahmed.projects.airBnbApp.repository;
 import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Inventory;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
+import com.sameerahmed.projects.airBnbApp.repository.projection.DailyMinPrice;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -177,5 +178,21 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                          @Param("endDate") LocalDate endDate,
                          @Param("closed") boolean closed,
                          @Param("surgeFactor") BigDecimal surgeFactor
+    );
+
+    @Query("""
+SELECT
+    i.date as date,
+    MIN(i.price) as price
+FROM Inventory i
+WHERE i.hotel = :hotel
+    AND i.date BETWEEN :startDate AND :endDate
+GROUP BY i.date
+ORDER BY i.date
+""")
+    List<DailyMinPrice> findDailyMinimumPrices(
+            @Param("hotel") Hotel hotel,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
     );
 }
