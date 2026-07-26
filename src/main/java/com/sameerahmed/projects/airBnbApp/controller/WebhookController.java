@@ -4,7 +4,6 @@ import com.sameerahmed.projects.airBnbApp.service.BookingService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.net.Webhook;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,7 +24,6 @@ public class WebhookController {
     private String endpointSecret;
 
     @PostMapping("/payment")
-    @Operation(summary = "Stripe payment webhook (use Stripe CLI locally; do not fake signatures)")
     public ResponseEntity<Void> createPayments(@RequestBody String payload,
                                                @RequestHeader("Stripe-Signature") String sigHeader) {
         try {

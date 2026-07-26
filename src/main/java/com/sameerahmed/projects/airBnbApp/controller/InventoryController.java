@@ -4,7 +4,6 @@ import com.sameerahmed.projects.airBnbApp.dto.BulkInventoryUpdateRequest;
 import com.sameerahmed.projects.airBnbApp.dto.InventoryDto;
 import com.sameerahmed.projects.airBnbApp.dto.UpdateInventoryRequestDto;
 import com.sameerahmed.projects.airBnbApp.service.InventoryService;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,13 +22,11 @@ public class InventoryController {
     private final InventoryService inventoryService;
 
     @GetMapping("/rooms/{roomId}")
-    @Operation(summary = "List inventory calendar for a room")
     public ResponseEntity<List<InventoryDto>> getAllInventoryByRoom(@PathVariable Long roomId) {
         return ResponseEntity.ok(inventoryService.getAllInventoryByRoom(roomId));
     }
 
     @PatchMapping("/rooms/{roomId}")
-    @Operation(summary = "Update surge/closed flags for a date range")
     public ResponseEntity<Void> updateInventory(@PathVariable Long roomId,
                                                 @Valid @RequestBody UpdateInventoryRequestDto updateInventoryRequestDto) {
         inventoryService.updateInventory(roomId, updateInventoryRequestDto);
@@ -37,7 +34,6 @@ public class InventoryController {
     }
 
     @PatchMapping("/hotels/{hotelId}")
-    @Operation(summary = "Bulk update surge/closed for all rooms in a hotel over a date range")
     public ResponseEntity<Void> bulkUpdateInventory(@PathVariable Long hotelId,
                                                     @Valid @RequestBody BulkInventoryUpdateRequest request) {
         inventoryService.bulkUpdateInventoryForHotel(hotelId, request);

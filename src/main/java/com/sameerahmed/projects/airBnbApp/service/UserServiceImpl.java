@@ -14,8 +14,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-
 import static com.sameerahmed.projects.airBnbApp.util.AppUtils.getCurrentUser;
 
 @Service
@@ -52,9 +50,6 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     @Transactional
     public UserDto promoteToHotelManager(Long userId) {
         User user = getUserById(userId);
-        if (user.getRoles() == null) {
-            user.setRoles(new HashSet<>());
-        }
         user.getRoles().add(Role.HOTEL_MANAGER);
         user.getRoles().add(Role.GUEST);
         user = userRepository.save(user);

@@ -73,11 +73,8 @@ public class Booking {
     @Column(precision = 10, scale = 2)
     private BigDecimal refundAmount;
 
-    /**
-     * Scoped as userId:clientKey so retries with the same Idempotency-Key reuse this booking.
-     */
     @Column(unique = true)
-    private String idempotencyKey;
+    private String idempotencyKey; // userId:clientKey
 
     private String idempotencyFingerprint;
 }

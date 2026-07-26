@@ -15,16 +15,11 @@ import java.util.Set;
 @Setter
 public class HolidayCalendar {
 
-    /**
-     * Recurring holidays in MM-dd format (e.g. 01-01, 12-25).
-     */
+    // MM-dd e.g. 01-01, 12-25
     private Set<String> dates = new HashSet<>();
 
     public boolean isHoliday(LocalDate date) {
-        if (dates == null || dates.isEmpty()) {
-            return false;
-        }
         String mmDd = String.format("%02d-%02d", date.getMonthValue(), date.getDayOfMonth());
-        return dates.contains(mmDd) || dates.contains(date.toString());
+        return dates.contains(mmDd);
     }
 }

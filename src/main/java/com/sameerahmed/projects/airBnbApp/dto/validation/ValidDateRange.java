@@ -14,7 +14,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ValidDateRange {
-    String message() default "end/check-out date must be on or after start/check-in date";
+    String message() default "end date must be on or after start date";
 
     Class<?>[] groups() default {};
 

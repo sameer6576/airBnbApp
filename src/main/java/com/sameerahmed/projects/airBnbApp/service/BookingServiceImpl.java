@@ -76,10 +76,9 @@ public class BookingServiceImpl implements BookingService {
             if (existing.isPresent()) {
                 Booking previous = existing.get();
                 if (!Objects.equals(previous.getIdempotencyFingerprint(), fingerprint)) {
-                    throw new IllegalArgumentException(
-                            "Idempotency-Key was already used with a different booking request");
+                    throw new IllegalArgumentException("Idempotency key mismatch");
                 }
-                log.info("Returning existing booking {} for idempotency key", previous.getId());
+                log.info("Reusing booking {} for idempotency key", previous.getId());
                 return modelMapper.map(previous, BookingDto.class);
             }
             return createNewBooking(bookingRequest, currentUser, scopedKey, fingerprint);

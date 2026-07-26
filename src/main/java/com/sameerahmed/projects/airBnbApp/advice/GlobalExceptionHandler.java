@@ -99,7 +99,7 @@ public class GlobalExceptionHandler {
         log.error("Unexpected exception occurred", ex);
         return buildErrorResponseEntity(ApiError.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .message(ex.getMessage())
+                .message("Something went wrong")
                 .build());
     }
 

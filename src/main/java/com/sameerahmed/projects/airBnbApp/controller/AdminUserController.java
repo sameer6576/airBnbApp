@@ -2,7 +2,6 @@ package com.sameerahmed.projects.airBnbApp.controller;
 
 import com.sameerahmed.projects.airBnbApp.dto.UserDto;
 import com.sameerahmed.projects.airBnbApp.service.UserService;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +18,6 @@ public class AdminUserController {
     private final UserService userService;
 
     @PostMapping("/{userId}/promote-manager")
-    @Operation(summary = "Promote a user to HOTEL_MANAGER (ADMIN only)")
     public ResponseEntity<UserDto> promoteToManager(@PathVariable Long userId) {
         return ResponseEntity.ok(userService.promoteToHotelManager(userId));
     }

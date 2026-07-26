@@ -26,43 +26,29 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void sendBookingConfirmed(Booking booking) {
-        String subject = "Booking confirmed #" + booking.getId();
-        String body = """
-                Your booking at %s is confirmed.
-                Check-in: %s
-                Check-out: %s
-                Amount: %s
-                """.formatted(
-                booking.getHotel().getName(),
-                booking.getCheckInDate(),
-                booking.getCheckOutDate(),
-                booking.getAmount()
-        );
-        dispatch(booking.getUser().getEmail(), subject, body);
+        dispatch(booking.getUser().getEmail(),
+                "Booking confirmed #" + booking.getId(),
+                "Confirmed at " + booking.getHotel().getName()
+                        + " (" + booking.getCheckInDate() + " → " + booking.getCheckOutDate()
+                        + "), amount " + booking.getAmount());
     }
 
     @Override
     public void sendBookingCancelled(Booking booking, BigDecimal refundAmount) {
-        String subject = "Booking cancelled #" + booking.getId();
-        String body = """
-                Your booking at %s was cancelled.
-                Refund amount: %s
-                """.formatted(booking.getHotel().getName(), refundAmount);
-        dispatch(booking.getUser().getEmail(), subject, body);
+        dispatch(booking.getUser().getEmail(),
+                "Booking cancelled #" + booking.getId(),
+                "Cancelled " + booking.getHotel().getName() + ", refund " + refundAmount);
     }
 
     @Override
     public void sendBookingExpiryWarning(Booking booking) {
-        String subject = "Booking reservation expiring soon #" + booking.getId();
-        String body = """
-                Your temporary reservation at %s will expire soon.
-                Complete payment to keep booking #%s.
-                """.formatted(booking.getHotel().getName(), booking.getId());
-        dispatch(booking.getUser().getEmail(), subject, body);
+        dispatch(booking.getUser().getEmail(),
+                "Reservation expiring #" + booking.getId(),
+                "Pay soon to keep booking at " + booking.getHotel().getName());
     }
 
     private void dispatch(String to, String subject, String body) {
-        log.info("Notification to {}: {} | {}", to, subject, body.replace('\n', ' '));
+        log.info("Notification to {}: {} | {}", to, subject, body);
         if (!mailEnabled || mailSender == null) {
             return;
         }

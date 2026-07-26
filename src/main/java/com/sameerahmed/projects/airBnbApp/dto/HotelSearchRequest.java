@@ -1,7 +1,6 @@
 package com.sameerahmed.projects.airBnbApp.dto;
 
 import com.sameerahmed.projects.airBnbApp.dto.validation.ValidDateRange;
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -17,10 +16,8 @@ import java.util.List;
 
 @Data
 @ValidDateRange(startField = "startDate", endField = "endDate")
-@Schema(description = "Hotel search criteria with optional filters and sort")
 public class HotelSearchRequest {
     @NotBlank
-    @Schema(example = "New York")
     private String city;
 
     @NotNull
@@ -31,30 +28,23 @@ public class HotelSearchRequest {
 
     @NotNull
     @Positive
-    @Schema(example = "1")
     private Integer roomsCount;
 
     @DecimalMin("0.0")
-    @Schema(example = "50.00", description = "Minimum average nightly price")
     private BigDecimal minPrice;
 
     @DecimalMin("0.0")
-    @Schema(example = "500.00", description = "Maximum average nightly price")
     private BigDecimal maxPrice;
 
     @Min(0)
     @Max(5)
-    @Schema(example = "3.5", description = "Minimum hotel average rating")
     private Double minRating;
 
     @Positive
-    @Schema(example = "2", description = "Minimum room capacity (guests)")
     private Integer minCapacity;
 
-    @Schema(description = "Hotel must include all of these amenities")
     private List<String> amenities = new ArrayList<>();
 
-    @Schema(example = "PRICE_ASC", allowableValues = {"PRICE_ASC", "PRICE_DESC", "RATING_DESC"})
     private SearchSort sortBy = SearchSort.PRICE_ASC;
 
     @Min(0)

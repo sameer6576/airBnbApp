@@ -48,31 +48,20 @@ public class DataLoader implements ApplicationRunner {
         if (!seedEnabled) {
             return;
         }
-        seedUser(managerEmail, managerPassword, managerName, Set.of(Role.HOTEL_MANAGER, Role.GUEST));
-        seedUser(adminEmail, adminPassword, adminName, Set.of(Role.ADMIN, Role.GUEST));
+        seedIfMissing(managerEmail, managerPassword, managerName, Set.of(Role.HOTEL_MANAGER, Role.GUEST));
+        seedIfMissing(adminEmail, adminPassword, adminName, Set.of(Role.ADMIN, Role.GUEST));
     }
 
-    private void seedUser(String email, String password, String name, Set<Role> roles) {
-        userRepository.findByEmail(email).ifPresentOrElse(
-                user -> {
-                    if (user.getRoles() == null) {
-                        user.setRoles(new HashSet<>());
-                    }
-                    boolean changed = user.getRoles().addAll(roles);
-                    if (changed) {
-                        userRepository.save(user);
-                        log.info("Updated roles for {}", email);
-                    }
-                },
-                () -> {
-                    User user = new User();
-                    user.setEmail(email);
-                    user.setName(name);
-                    user.setPassword(passwordEncoder.encode(password));
-                    user.setRoles(new HashSet<>(roles));
-                    userRepository.save(user);
-                    log.info("Seeded user: {}", email);
-                }
-        );
+    private void seedIfMissing(String email, String password, String name, Set<Role> roles) {
+        if (userRepository.findByEmail(email).isPresent()) {
+            return;
+        }
+        User user = new User();
+        user.setEmail(email);
+        user.setName(name);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setRoles(new HashSet<>(roles));
+        userRepository.save(user);
+        log.info("Seeded user: {}", email);
     }
 }

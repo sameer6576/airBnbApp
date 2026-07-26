@@ -1,14 +1,8 @@
 package com.sameerahmed.projects.airBnbApp.dto;
 
-import com.sameerahmed.projects.airBnbApp.entity.Guest;
-import com.sameerahmed.projects.airBnbApp.entity.Hotel;
-import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.entity.User;
 import com.sameerahmed.projects.airBnbApp.entity.enums.BookingStatus;
-import jakarta.persistence.*;
 import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

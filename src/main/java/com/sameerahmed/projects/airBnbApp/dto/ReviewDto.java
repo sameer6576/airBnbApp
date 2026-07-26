@@ -1,6 +1,5 @@
 package com.sameerahmed.projects.airBnbApp.dto;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -10,7 +9,6 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@Schema(description = "Hotel review")
 public class ReviewDto {
     private Long id;
     private Long hotelId;
