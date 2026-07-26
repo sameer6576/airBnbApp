@@ -7,6 +7,7 @@ import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.entity.User;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
 import com.sameerahmed.projects.airBnbApp.repository.HotelMinPriceRepository;
+import com.sameerahmed.projects.airBnbApp.repository.HotelRepository;
 import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
 import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final ModelMapper modelMapper;
     private final HotelMinPriceRepository hotelMinPriceRepository;
     private final RoomRepository roomRepository;
+    private final HotelRepository hotelRepository;
 
     @Override
     public void initializeRoomForAYear(Room room) {
@@ -143,5 +145,30 @@ public class InventoryServiceImpl implements InventoryService {
                 room.getBasePrice(),
                 room.getTotalCount()
         );
+    }
+
+    @Override
+    @Transactional
+    public void bulkUpdateInventoryForHotel(Long hotelId, BulkInventoryUpdateRequest request) {
+        Hotel hotel = hotelRepository.findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: " + hotelId));
+        User user = getCurrentUser();
+        if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
+            throw new AccessDeniedException("You are not the owner of the hotel with ID: " + hotelId);
+        }
+        List<Room> rooms = hotel.getRooms() == null ? List.of() : hotel.getRooms();
+        for (Room room : rooms) {
+            inventoryRepository.getInventoryAndLockBeforeUpdate(
+                    room.getId(), request.getStartDate(), request.getEndDate());
+            inventoryRepository.updateInventory(
+                    room.getId(),
+                    request.getStartDate(),
+                    request.getEndDate(),
+                    request.getClosed(),
+                    request.getSurgeFactor()
+            );
+        }
+        log.info("Bulk updated inventory for hotel {} between {} and {}",
+                hotelId, request.getStartDate(), request.getEndDate());
     }
 }

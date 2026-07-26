@@ -43,6 +43,12 @@ public class Hotel {
     @Column(nullable = false)
     private Boolean active;
 
+    @Column(nullable = false)
+    private Double averageRating = 0.0;
+
+    @Column(nullable = false)
+    private Integer reviewCount = 0;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     private User owner;
 

@@ -46,9 +46,16 @@ public class BookingServiceImpl implements BookingService {
     private final GuestRepository guestRepository;
     private final CheckoutService checkoutService;
     private final PricingService pricingService;
+    private final NotificationService notificationService;
 
     @Value("${frontend.url}")
     private String frontendUrl;
+
+    @Value("${app.cancellation.free-cancel-days:7}")
+    private int freeCancelDays;
+
+    @Value("${app.cancellation.partial-refund-percent:50}")
+    private int partialRefundPercent;
 
     @Override
     @Transactional
@@ -87,6 +94,7 @@ public class BookingServiceImpl implements BookingService {
                 .roomsCount(bookingRequest.getRoomsCount())
                 .amount(totalPrice)
                 .guests(new HashSet<>())
+                .expiryWarningSent(false)
                 .build();
 
         booking = bookingRepository.save(booking);
@@ -179,6 +187,7 @@ public class BookingServiceImpl implements BookingService {
             inventoryRepository.confirmBooking(booking.getRoom().getId(), booking.getCheckInDate(),
                     booking.getCheckOutDate(), booking.getRoomsCount());
 
+            notificationService.sendBookingConfirmed(booking);
             log.info("Successfully confirmed the booking for Booking ID: {}", booking.getId());
         } else {
             log.warn("Unhandled event type: {}", event.getType());
@@ -197,7 +206,11 @@ public class BookingServiceImpl implements BookingService {
             throw new IllegalStateException("Only confirmed bookings can be cancelled");
         }
 
+        CancellationQuoteDto quote = buildCancellationQuote(booking);
+        BigDecimal refundAmount = quote.getEstimatedRefund();
+
         booking.setBookingStatus(BookingStatus.CANCELLED);
+        booking.setRefundAmount(refundAmount);
         bookingRepository.save(booking);
 
         inventoryRepository.findAndLockReservedInventory(booking.getRoom().getId(), booking.getCheckInDate(),
@@ -206,17 +219,182 @@ public class BookingServiceImpl implements BookingService {
         inventoryRepository.cancelBooking(booking.getRoom().getId(), booking.getCheckInDate(),
                 booking.getCheckOutDate(), booking.getRoomsCount());
 
-        try {
-            Session session = Session.retrieve(booking.getPaymentSessionId());
-            RefundCreateParams refundParams = RefundCreateParams.builder()
-                    .setPaymentIntent(session.getPaymentIntent())
-                    .build();
-            Refund.create(refundParams);
-        } catch (StripeException e) {
-            throw new RuntimeException(e);
+        if (refundAmount.compareTo(BigDecimal.ZERO) > 0 && booking.getPaymentSessionId() != null) {
+            try {
+                Session session = Session.retrieve(booking.getPaymentSessionId());
+                RefundCreateParams.Builder refundBuilder = RefundCreateParams.builder()
+                        .setPaymentIntent(session.getPaymentIntent());
+                if (refundAmount.compareTo(booking.getAmount()) < 0) {
+                    long cents = refundAmount.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
+                    refundBuilder.setAmount(cents);
+                }
+                Refund.create(refundBuilder.build());
+            } catch (StripeException e) {
+                throw new IllegalStateException("Refund failed: " + e.getMessage());
+            }
         }
 
-        log.info("Successfully cancelled the booking for Booking ID: {}", booking.getId());
+        notificationService.sendBookingCancelled(booking, refundAmount);
+        log.info("Successfully cancelled booking {} with refund {}", booking.getId(), refundAmount);
+    }
+
+    @Override
+    public CancellationQuoteDto getCancellationQuote(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+        assertBookingOwner(booking, getCurrentUser());
+        if (booking.getBookingStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Cancellation quote is only available for confirmed bookings");
+        }
+        return buildCancellationQuote(booking);
+    }
+
+    @Override
+    @Transactional
+    public BookingDto modifyBookingDates(Long bookingId, ModifyBookingRequest request) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+        User user = getCurrentUser();
+        assertBookingOwner(booking, user);
+
+        if (booking.getBookingStatus() != BookingStatus.RESERVED
+                && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Booking cannot be modified in status " + booking.getBookingStatus());
+        }
+        if (hasBookingExpired(booking) && booking.getBookingStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Booking has already expired");
+        }
+
+        Long roomId = booking.getRoom().getId();
+        LocalDate oldIn = booking.getCheckInDate();
+        LocalDate oldOut = booking.getCheckOutDate();
+        int oldCount = booking.getRoomsCount();
+
+        List<Inventory> inventoryList = inventoryRepository.findAndLockAvailableInventory(
+                roomId, request.getCheckInDate(), request.getCheckOutDate(), request.getRoomsCount());
+        long daysCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate()) + 1;
+        if (inventoryList.size() != daysCount) {
+            throw new IllegalStateException("Room is not available for the new dates");
+        }
+
+        if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
+            inventoryRepository.findAndLockReservedInventory(roomId, oldIn, oldOut, oldCount);
+            inventoryRepository.cancelBooking(roomId, oldIn, oldOut, oldCount);
+            inventoryRepository.initBooking(roomId, request.getCheckInDate(), request.getCheckOutDate(), request.getRoomsCount());
+            inventoryRepository.findAndLockReservedInventory(roomId, request.getCheckInDate(), request.getCheckOutDate(), request.getRoomsCount());
+            inventoryRepository.confirmBooking(roomId, request.getCheckInDate(), request.getCheckOutDate(), request.getRoomsCount());
+        } else {
+            inventoryRepository.findAndLockReservedInventory(roomId, oldIn, oldOut, oldCount);
+            inventoryRepository.cancelReservation(roomId, oldIn, oldOut, oldCount);
+            inventoryRepository.initBooking(roomId, request.getCheckInDate(), request.getCheckOutDate(), request.getRoomsCount());
+        }
+
+        BigDecimal priceForOneRoom = pricingService.calculateTotalPrice(inventoryList);
+        booking.setCheckInDate(request.getCheckInDate());
+        booking.setCheckOutDate(request.getCheckOutDate());
+        booking.setRoomsCount(request.getRoomsCount());
+        booking.setAmount(priceForOneRoom.multiply(BigDecimal.valueOf(request.getRoomsCount())));
+        return modelMapper.map(bookingRepository.save(booking), BookingDto.class);
+    }
+
+    @Override
+    @Transactional
+    public BookingDto replaceGuests(Long bookingId, List<GuestDto> guestDtoList) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+        User user = getCurrentUser();
+        assertBookingOwner(booking, user);
+
+        if (booking.getBookingStatus() != BookingStatus.RESERVED
+                && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Guests cannot be modified in status " + booking.getBookingStatus());
+        }
+
+        booking.getGuests().clear();
+        for (GuestDto guestDto : guestDtoList) {
+            Guest guest;
+            if (guestDto.getId() != null) {
+                guest = guestRepository.findById(guestDto.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Guest not found with id: " + guestDto.getId()));
+                if (!Objects.equals(user.getId(), guest.getUser().getId())) {
+                    throw new AccessDeniedException("Guest does not belong to this user with id: " + user.getId());
+                }
+            } else {
+                guest = modelMapper.map(guestDto, Guest.class);
+                guest.setUser(user);
+                guest = guestRepository.save(guest);
+            }
+            booking.getGuests().add(guest);
+        }
+        if (!guestDtoList.isEmpty() && booking.getBookingStatus() == BookingStatus.RESERVED) {
+            booking.setBookingStatus(BookingStatus.GUEST_ADDED);
+        }
+        return modelMapper.map(bookingRepository.save(booking), BookingDto.class);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public HotelAnalyticsDto getHotelAnalytics(Long hotelId, LocalDate startDate, LocalDate endDate) {
+        Hotel hotel = hotelRepository.findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + hotelId));
+        User user = getCurrentUser();
+        if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
+            throw new AccessDeniedException("This user does not own this hotel with id: " + hotelId);
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        List<Booking> bookings = bookingRepository.findByHotelAndCreatedAtBetween(hotel, startDateTime, endDateTime);
+
+        long total = bookings.size();
+        long confirmed = bookings.stream().filter(b -> b.getBookingStatus() == BookingStatus.CONFIRMED).count();
+        long cancelled = bookings.stream().filter(b -> b.getBookingStatus() == BookingStatus.CANCELLED).count();
+        BigDecimal revenue = bookings.stream()
+                .filter(b -> b.getBookingStatus() == BookingStatus.CONFIRMED)
+                .map(Booking::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        long inventoryDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        int totalRoomUnits = hotel.getRooms() == null ? 0 :
+                hotel.getRooms().stream().mapToInt(Room::getTotalCount).sum();
+        long capacityNights = Math.max(inventoryDays, 1) * Math.max(totalRoomUnits, 1);
+        long bookedNights = bookings.stream()
+                .filter(b -> b.getBookingStatus() == BookingStatus.CONFIRMED)
+                .mapToLong(b -> (ChronoUnit.DAYS.between(b.getCheckInDate(), b.getCheckOutDate()) + 1L) * b.getRoomsCount())
+                .sum();
+        double occupancy = Math.min(100.0, (bookedNights * 100.0) / capacityNights);
+        double cancelRate = total == 0 ? 0.0 : (cancelled * 100.0) / total;
+
+        List<HotelAnalyticsDto.RoomPerformanceDto> topRooms = bookings.stream()
+                .filter(b -> b.getBookingStatus() == BookingStatus.CONFIRMED)
+                .collect(Collectors.groupingBy(b -> b.getRoom().getId()))
+                .entrySet().stream()
+                .map(entry -> {
+                    List<Booking> roomBookings = entry.getValue();
+                    Room room = roomBookings.getFirst().getRoom();
+                    BigDecimal roomRevenue = roomBookings.stream()
+                            .map(Booking::getAmount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return new HotelAnalyticsDto.RoomPerformanceDto(
+                            room.getId(), room.getType(), (long) roomBookings.size(), roomRevenue);
+                })
+                .sorted((a, b) -> b.getRevenue().compareTo(a.getRevenue()))
+                .limit(5)
+                .collect(Collectors.toList());
+
+        return new HotelAnalyticsDto(
+                hotel.getId(),
+                hotel.getName(),
+                Math.round(occupancy * 10.0) / 10.0,
+                Math.round(cancelRate * 10.0) / 10.0,
+                total,
+                confirmed,
+                cancelled,
+                revenue,
+                topRooms
+        );
     }
 
     @Override
@@ -302,6 +480,48 @@ public class BookingServiceImpl implements BookingService {
     private void assertBookingOwner(Booking booking, User user) {
         if (!Objects.equals(user.getId(), booking.getUser().getId())) {
             throw new AccessDeniedException("Booking does not belong to this user with id: " + user.getId());
+        }
+    }
+
+    private CancellationQuoteDto buildCancellationQuote(Booking booking) {
+        long daysUntilCheckIn = ChronoUnit.DAYS.between(LocalDate.now(), booking.getCheckInDate());
+        boolean free = daysUntilCheckIn >= freeCancelDays;
+        BigDecimal refundPercent = free
+                ? BigDecimal.valueOf(100)
+                : BigDecimal.valueOf(partialRefundPercent);
+        BigDecimal estimatedRefund = booking.getAmount()
+                .multiply(refundPercent)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        if (daysUntilCheckIn < 0) {
+            estimatedRefund = BigDecimal.ZERO;
+            refundPercent = BigDecimal.ZERO;
+            free = false;
+        }
+        return new CancellationQuoteDto(
+                free,
+                (int) daysUntilCheckIn,
+                freeCancelDays,
+                refundPercent,
+                estimatedRefund
+        );
+    }
+
+    @Override
+    @Transactional
+    public void sendExpiryWarnings() {
+        LocalDateTime windowStart = LocalDateTime.now().minusMinutes(10);
+        LocalDateTime windowEnd = LocalDateTime.now().minusMinutes(8);
+        List<BookingStatus> statuses = List.of(
+                BookingStatus.RESERVED,
+                BookingStatus.GUEST_ADDED,
+                BookingStatus.PAYMENT_PENDING
+        );
+        List<Booking> soonToExpire = bookingRepository
+                .findByBookingStatusInAndExpiryWarningSentFalseAndCreatedAtBetween(statuses, windowStart, windowEnd);
+        for (Booking booking : soonToExpire) {
+            notificationService.sendBookingExpiryWarning(booking);
+            booking.setExpiryWarningSent(true);
+            bookingRepository.save(booking);
         }
     }
 

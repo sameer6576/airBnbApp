@@ -18,4 +18,6 @@ public interface InventoryService {
     void updateInventory(Long roomId, UpdateInventoryRequestDto updateInventoryRequestDto);
 
     void syncFutureInventoryForRoom(Room room);
+
+    void bulkUpdateInventoryForHotel(Long hotelId, BulkInventoryUpdateRequest request);
 }

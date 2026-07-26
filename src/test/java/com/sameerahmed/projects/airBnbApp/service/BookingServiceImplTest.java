@@ -47,6 +47,7 @@ class BookingServiceImplTest {
     @Mock private GuestRepository guestRepository;
     @Mock private CheckoutService checkoutService;
     @Mock private PricingService pricingService;
+    @Mock private NotificationService notificationService;
 
     @InjectMocks
     private BookingServiceImpl bookingService;

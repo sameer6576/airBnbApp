@@ -17,4 +17,10 @@ public class BookingExpiryService {
         log.debug("Running stale booking expiry job");
         bookingService.expireStaleBookings();
     }
+
+    @Scheduled(cron = "30 * * * * *")
+    public void sendExpiryWarnings() {
+        log.debug("Running booking expiry warning job");
+        bookingService.sendExpiryWarnings();
+    }
 }

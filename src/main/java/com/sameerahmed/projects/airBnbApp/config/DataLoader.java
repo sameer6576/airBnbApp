@@ -11,6 +11,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.Set;
 
 @Component
@@ -33,27 +34,44 @@ public class DataLoader implements ApplicationRunner {
     @Value("${app.seed.manager.name:Hotel Manager}")
     private String managerName;
 
+    @Value("${app.seed.admin.email:admin@example.com}")
+    private String adminEmail;
+
+    @Value("${app.seed.admin.password:Admin@123}")
+    private String adminPassword;
+
+    @Value("${app.seed.admin.name:Platform Admin}")
+    private String adminName;
+
     @Override
     public void run(ApplicationArguments args) {
         if (!seedEnabled) {
             return;
         }
-        userRepository.findByEmail(managerEmail).ifPresentOrElse(
+        seedUser(managerEmail, managerPassword, managerName, Set.of(Role.HOTEL_MANAGER, Role.GUEST));
+        seedUser(adminEmail, adminPassword, adminName, Set.of(Role.ADMIN, Role.GUEST));
+    }
+
+    private void seedUser(String email, String password, String name, Set<Role> roles) {
+        userRepository.findByEmail(email).ifPresentOrElse(
                 user -> {
-                    if (!user.getRoles().contains(Role.HOTEL_MANAGER)) {
-                        user.getRoles().add(Role.HOTEL_MANAGER);
+                    if (user.getRoles() == null) {
+                        user.setRoles(new HashSet<>());
+                    }
+                    boolean changed = user.getRoles().addAll(roles);
+                    if (changed) {
                         userRepository.save(user);
-                        log.info("Ensured HOTEL_MANAGER role for {}", managerEmail);
+                        log.info("Updated roles for {}", email);
                     }
                 },
                 () -> {
-                    User manager = new User();
-                    manager.setEmail(managerEmail);
-                    manager.setName(managerName);
-                    manager.setPassword(passwordEncoder.encode(managerPassword));
-                    manager.setRoles(Set.of(Role.HOTEL_MANAGER, Role.GUEST));
-                    userRepository.save(manager);
-                    log.info("Seeded hotel manager user: {}", managerEmail);
+                    User user = new User();
+                    user.setEmail(email);
+                    user.setName(name);
+                    user.setPassword(passwordEncoder.encode(password));
+                    user.setRoles(new HashSet<>(roles));
+                    userRepository.save(user);
+                    log.info("Seeded user: {}", email);
                 }
         );
     }

@@ -21,4 +21,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByUser(User user);
 
     List<Booking> findByBookingStatusInAndCreatedAtBefore(Collection<BookingStatus> statuses, LocalDateTime createdAt);
+
+    List<Booking> findByBookingStatusInAndExpiryWarningSentFalseAndCreatedAtBetween(
+            Collection<BookingStatus> statuses,
+            LocalDateTime start,
+            LocalDateTime end
+    );
 }

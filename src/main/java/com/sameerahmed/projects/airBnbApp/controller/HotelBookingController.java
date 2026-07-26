@@ -1,8 +1,6 @@
 package com.sameerahmed.projects.airBnbApp.controller;
 
-import com.sameerahmed.projects.airBnbApp.dto.BookingDto;
-import com.sameerahmed.projects.airBnbApp.dto.BookingRequest;
-import com.sameerahmed.projects.airBnbApp.dto.GuestDto;
+import com.sameerahmed.projects.airBnbApp.dto.*;
 import com.sameerahmed.projects.airBnbApp.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -36,6 +34,19 @@ public class HotelBookingController {
         return ResponseEntity.ok(bookingService.addGuests(bookingId, guestDtos));
     }
 
+    @PutMapping("/{bookingId}/guests")
+    @Operation(summary = "Replace guests on a booking")
+    public ResponseEntity<BookingDto> replaceGuests(@PathVariable Long bookingId, @RequestBody List<GuestDto> guestDtos) {
+        return ResponseEntity.ok(bookingService.replaceGuests(bookingId, guestDtos));
+    }
+
+    @PatchMapping("/{bookingId}/dates")
+    @Operation(summary = "Modify booking dates/rooms when inventory allows")
+    public ResponseEntity<BookingDto> modifyDates(@PathVariable Long bookingId,
+                                                  @Valid @RequestBody ModifyBookingRequest request) {
+        return ResponseEntity.ok(bookingService.modifyBookingDates(bookingId, request));
+    }
+
     @PostMapping("/{bookingId}/payments")
     @Operation(summary = "Create a Stripe Checkout session for the booking")
     public ResponseEntity<Map<String, String>> initiatePayment(@PathVariable Long bookingId) {
@@ -43,8 +54,14 @@ public class HotelBookingController {
         return ResponseEntity.ok(Map.of("sessionUrl", sessionUrl));
     }
 
+    @GetMapping("/{bookingId}/cancellation-quote")
+    @Operation(summary = "Preview refund amount based on cancellation policy")
+    public ResponseEntity<CancellationQuoteDto> cancellationQuote(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.getCancellationQuote(bookingId));
+    }
+
     @PostMapping("/{bookingId}/cancel")
-    @Operation(summary = "Cancel a confirmed booking and refund")
+    @Operation(summary = "Cancel a confirmed booking with policy-based refund")
     public ResponseEntity<Void> cancelPayment(@PathVariable Long bookingId) {
         bookingService.cancelPayment(bookingId);
         return ResponseEntity.noContent().build();

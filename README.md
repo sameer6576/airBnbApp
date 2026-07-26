@@ -43,13 +43,25 @@ Client (Postman / Swagger)
 
 | Role | Access |
 |------|--------|
-| `GUEST` | Bookings, guests, profile |
-| `HOTEL_MANAGER` | `/admin/**` hotels, rooms, inventory, reports |
+| `GUEST` | Bookings, guests, profile, wishlist, reviews |
+| `HOTEL_MANAGER` | `/admin/**` hotels, rooms, inventory, reports, analytics |
+| `ADMIN` | `/admin/users/**` promote managers (+ manager admin APIs) |
 
-With `app.seed.enabled=true`, a manager is created on startup:
+With `app.seed.enabled=true`, startup seeds:
 
-- Email: `manager@example.com`
-- Password: `Manager@123`
+- Manager: `manager@example.com` / `Manager@123`
+- Admin: `admin@example.com` / `Admin@123`
+
+## Extra features
+
+- **Reviews** — `POST /bookings/{id}/reviews` after check-out; `GET /hotels/{id}/reviews`; hotel `averageRating` on search
+- **Wishlist** — `POST/DELETE /wishlists/hotels/{id}`, `GET /wishlists`
+- **Emails** — confirm / cancel / expiry warning (logged by default; enable SMTP via `app.mail.enabled` + `spring.mail.*`)
+- **Modify booking** — `PATCH /bookings/{id}/dates`, `PUT /bookings/{id}/guests`
+- **Cancellation policy** — free cancel within `app.cancellation.free-cancel-days` (default 7); else partial `%` refund; quote via `GET /bookings/{id}/cancellation-quote`
+- **Analytics** — `GET /admin/hotels/{id}/analytics` (occupancy, cancel rate, top rooms)
+- **Bulk inventory** — `PATCH /admin/inventory/hotels/{id}`
+- **Promote manager** — `POST /admin/users/{id}/promote-manager` (ADMIN)
 
 ## Prerequisites
 

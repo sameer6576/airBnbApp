@@ -39,6 +39,7 @@ public class WebSecurityConfig {
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/hotels/search").permitAll()
                         .requestMatchers(HttpMethod.GET, "/hotels/*/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/hotels/*/reviews").permitAll()
                         .requestMatchers("/webhook/payment").permitAll()
                         .requestMatchers(
                                 "/swagger-ui.html",
@@ -46,10 +47,12 @@ public class WebSecurityConfig {
                                 "/v3/api-docs/**",
                                 "/v3/api-docs.yaml"
                         ).permitAll()
-                        .requestMatchers("/admin/**").hasRole("HOTEL_MANAGER")
+                        .requestMatchers("/admin/users/**").hasRole("ADMIN")
+                        .requestMatchers("/admin/**").hasAnyRole("HOTEL_MANAGER", "ADMIN")
                         .requestMatchers("/bookings/**").authenticated()
                         .requestMatchers("/users/**").authenticated()
                         .requestMatchers("/guests/**").authenticated()
+                        .requestMatchers("/wishlists/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 .exceptionHandling(exceptionHandlingConfig ->

@@ -65,4 +65,11 @@ public class Booking {
     private BigDecimal amount;
     
     private String paymentSessionId;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean expiryWarningSent = false;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal refundAmount;
 }

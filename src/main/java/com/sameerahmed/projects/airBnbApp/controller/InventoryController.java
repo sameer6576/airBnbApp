@@ -1,5 +1,6 @@
 package com.sameerahmed.projects.airBnbApp.controller;
 
+import com.sameerahmed.projects.airBnbApp.dto.BulkInventoryUpdateRequest;
 import com.sameerahmed.projects.airBnbApp.dto.InventoryDto;
 import com.sameerahmed.projects.airBnbApp.dto.UpdateInventoryRequestDto;
 import com.sameerahmed.projects.airBnbApp.service.InventoryService;
@@ -32,6 +33,14 @@ public class InventoryController {
     public ResponseEntity<Void> updateInventory(@PathVariable Long roomId,
                                                 @Valid @RequestBody UpdateInventoryRequestDto updateInventoryRequestDto) {
         inventoryService.updateInventory(roomId, updateInventoryRequestDto);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/hotels/{hotelId}")
+    @Operation(summary = "Bulk update surge/closed for all rooms in a hotel over a date range")
+    public ResponseEntity<Void> bulkUpdateInventory(@PathVariable Long hotelId,
+                                                    @Valid @RequestBody BulkInventoryUpdateRequest request) {
+        inventoryService.bulkUpdateInventoryForHotel(hotelId, request);
         return ResponseEntity.noContent().build();
     }
 }

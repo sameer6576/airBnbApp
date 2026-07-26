@@ -5,7 +5,6 @@ import com.stripe.model.Event;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 public interface BookingService {
     BookingDto initialiseBooking(BookingRequest bookingRequest);
@@ -18,15 +17,25 @@ public interface BookingService {
 
     void cancelPayment(Long bookingId);
 
+    CancellationQuoteDto getCancellationQuote(Long bookingId);
+
+    BookingDto modifyBookingDates(Long bookingId, ModifyBookingRequest request);
+
+    BookingDto replaceGuests(Long bookingId, List<GuestDto> guestDtos);
+
     String getBookingStatus(Long bookingId);
 
     List<BookingDto> getAllBookingsByHotelId(Long hotelId);
 
     HotelReportDto getReportByHotelId(Long hotelId, LocalDate startDate, LocalDate endDate);
 
+    HotelAnalyticsDto getHotelAnalytics(Long hotelId, LocalDate startDate, LocalDate endDate);
+
     List<BookingDto> getMyBookings();
 
     UserDto getMyProfile();
 
     void expireStaleBookings();
+
+    void sendExpiryWarnings();
 }

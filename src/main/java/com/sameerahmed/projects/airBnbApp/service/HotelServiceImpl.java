@@ -38,6 +38,8 @@ public class HotelServiceImpl implements HotelService {
         log.info("Creating a new hotel with name: {}", hotelDto.getName());
         Hotel hotel = modelMapper.map(hotelDto, Hotel.class);
         hotel.setActive(false);
+        hotel.setAverageRating(0.0);
+        hotel.setReviewCount(0);
 
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 

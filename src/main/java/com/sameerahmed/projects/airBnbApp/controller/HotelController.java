@@ -1,6 +1,7 @@
 package com.sameerahmed.projects.airBnbApp.controller;
 
 import com.sameerahmed.projects.airBnbApp.dto.BookingDto;
+import com.sameerahmed.projects.airBnbApp.dto.HotelAnalyticsDto;
 import com.sameerahmed.projects.airBnbApp.dto.HotelDto;
 import com.sameerahmed.projects.airBnbApp.dto.HotelReportDto;
 import com.sameerahmed.projects.airBnbApp.service.BookingService;
@@ -83,5 +84,15 @@ public class HotelController {
         if (startDate == null) startDate = LocalDate.now().minusMonths(1);
         if (endDate == null) endDate = LocalDate.now();
         return ResponseEntity.ok(bookingService.getReportByHotelId(hotelId, startDate, endDate));
+    }
+
+    @GetMapping("/{hotelId}/analytics")
+    @Operation(summary = "Dashboard analytics: occupancy, cancellation rate, top rooms")
+    public ResponseEntity<HotelAnalyticsDto> getAnalytics(@PathVariable Long hotelId,
+                                                          @RequestParam(required = false) LocalDate startDate,
+                                                          @RequestParam(required = false) LocalDate endDate) {
+        if (startDate == null) startDate = LocalDate.now().minusMonths(1);
+        if (endDate == null) endDate = LocalDate.now();
+        return ResponseEntity.ok(bookingService.getHotelAnalytics(hotelId, startDate, endDate));
     }
 }
