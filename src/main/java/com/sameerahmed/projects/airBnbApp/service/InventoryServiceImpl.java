@@ -9,7 +9,6 @@ import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
 import com.sameerahmed.projects.airBnbApp.repository.HotelMinPriceRepository;
 import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
 import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
-import com.sameerahmed.projects.airBnbApp.strategy.PricingStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
@@ -132,5 +131,17 @@ public class InventoryServiceImpl implements InventoryService {
                 updateInventoryRequestDto.getEndDate(),
                 updateInventoryRequestDto.getClosed(),
                 updateInventoryRequestDto.getSurgeFactor());
+    }
+
+    @Override
+    @Transactional
+    public void syncFutureInventoryForRoom(Room room) {
+        log.info("Syncing future inventory for room ID: {}", room.getId());
+        inventoryRepository.updateFutureInventoryForRoom(
+                room.getId(),
+                LocalDate.now(),
+                room.getBasePrice(),
+                room.getTotalCount()
+        );
     }
 }

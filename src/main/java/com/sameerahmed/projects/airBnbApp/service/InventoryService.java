@@ -16,4 +16,6 @@ public interface InventoryService {
     List<InventoryDto> getAllInventoryByRoom(Long roomId);
 
     void updateInventory(Long roomId, UpdateInventoryRequestDto updateInventoryRequestDto);
+
+    void syncFutureInventoryForRoom(Room room);
 }

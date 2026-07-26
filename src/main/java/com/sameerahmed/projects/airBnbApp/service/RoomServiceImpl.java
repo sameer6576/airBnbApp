@@ -5,16 +5,17 @@ import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.entity.User;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
-import com.sameerahmed.projects.airBnbApp.exception.UnAuthorizedException;
 import com.sameerahmed.projects.airBnbApp.repository.HotelRepository;
 import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -38,8 +39,8 @@ public class RoomServiceImpl implements RoomService {
 
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        if(!user.equals(hotel.getOwner())){
-            throw new UnAuthorizedException("This user does not own this hotel with id: "+hotelId);
+        if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
+            throw new AccessDeniedException("This user does not own this hotel with id: "+hotelId);
         }
 
         Room room = modelMapper.map(roomDto, Room.class);
@@ -61,7 +62,7 @@ public class RoomServiceImpl implements RoomService {
         User user = getCurrentUser();
 
         if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
-            throw new UnAuthorizedException(
+            throw new AccessDeniedException(
                     "This user does not own this hotel with id: " + hotelId);
         }
 
@@ -84,7 +85,7 @@ public class RoomServiceImpl implements RoomService {
         User user = getCurrentUser();
 
         if (!Objects.equals(user.getId(), room.getHotel().getOwner().getId())) {
-            throw new UnAuthorizedException("This user does not own this hotel with id: "+room.getHotel().getId());
+            throw new AccessDeniedException("This user does not own this hotel with id: "+room.getHotel().getId());
         }
 
         inventoryService.deleteAllInventories(room);
@@ -100,18 +101,25 @@ public class RoomServiceImpl implements RoomService {
         User user = getCurrentUser();
 
         if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
-            throw new UnAuthorizedException("This user does not own the hotel with ID: "+hotelId);
+            throw new AccessDeniedException("This user does not own the hotel with ID: "+hotelId);
         }
 
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: "+roomId));
 
+        BigDecimal previousBasePrice = room.getBasePrice();
+        Integer previousTotalCount = room.getTotalCount();
+
         modelMapper.map(roomDto, room);
         room.setId(roomId);
-
-        // TODO: if change in price or inventory, update the inventory associated to the room
-
         room = roomRepository.save(room);
+
+        boolean priceChanged = previousBasePrice == null || previousBasePrice.compareTo(room.getBasePrice()) != 0;
+        boolean countChanged = !Objects.equals(previousTotalCount, room.getTotalCount());
+        if (priceChanged || countChanged) {
+            inventoryService.syncFutureInventoryForRoom(room);
+        }
+
         return modelMapper.map(room, RoomDto.class);
 
     }

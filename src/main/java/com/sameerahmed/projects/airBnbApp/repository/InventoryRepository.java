@@ -120,6 +120,35 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                        @Param("numberOfRooms") int numberOfRooms
     );
 
+    @Modifying
+    @Query("""
+                    UPDATE Inventory i
+                    SET i.reservedCount = i.reservedCount - :numberOfRooms
+                    WHERE i.room.id = :roomId
+                        AND i.date BETWEEN :startDate AND :endDate
+                        AND i.reservedCount >= :numberOfRooms
+                        AND i.closed = false
+            """)
+    void cancelReservation(@Param("roomId") Long roomId,
+                           @Param("startDate") LocalDate startDate,
+                           @Param("endDate") LocalDate endDate,
+                           @Param("numberOfRooms") int numberOfRooms
+    );
+
+    @Modifying
+    @Query("""
+                    UPDATE Inventory i
+                    SET i.price = :basePrice,
+                        i.totalCount = :totalCount
+                    WHERE i.room.id = :roomId
+                        AND i.date >= :fromDate
+            """)
+    void updateFutureInventoryForRoom(@Param("roomId") Long roomId,
+                                      @Param("fromDate") LocalDate fromDate,
+                                      @Param("basePrice") BigDecimal basePrice,
+                                      @Param("totalCount") Integer totalCount
+    );
+
     List<Inventory> findByHotelAndDateBetween(Hotel hotel, LocalDate startDate, LocalDate endDate);
 
     List<Inventory> findByRoomOrderByDate(Room room);

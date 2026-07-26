@@ -4,7 +4,6 @@ import com.sameerahmed.projects.airBnbApp.dto.*;
 import com.sameerahmed.projects.airBnbApp.entity.*;
 import com.sameerahmed.projects.airBnbApp.entity.enums.BookingStatus;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
-import com.sameerahmed.projects.airBnbApp.exception.UnAuthorizedException;
 import com.sameerahmed.projects.airBnbApp.repository.*;
 import com.sameerahmed.projects.airBnbApp.strategy.PricingService;
 import com.stripe.exception.StripeException;
@@ -17,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,8 +25,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -76,8 +74,6 @@ public class BookingServiceImpl implements BookingService {
         inventoryRepository.initBooking(bookingRequest.getRoomId(), bookingRequest.getCheckInDate(),
                 bookingRequest.getCheckOutDate(), bookingRequest.getRoomsCount());
 
-        // TODO: CALCULATE DYNAMIC PRICE
-
         BigDecimal priceForOneRoom = pricingService.calculateTotalPrice(inventoryList);
 
         BigDecimal totalPrice = priceForOneRoom.multiply(BigDecimal.valueOf(bookingRequest.getRoomsCount()));
@@ -90,6 +86,7 @@ public class BookingServiceImpl implements BookingService {
                 .user(getCurrentUser())
                 .roomsCount(bookingRequest.getRoomsCount())
                 .amount(totalPrice)
+                .guests(new HashSet<>())
                 .build();
 
         booking = bookingRepository.save(booking);
@@ -97,6 +94,7 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
+    @Transactional
     public BookingDto addGuests(Long bookingId, List<GuestDto> guestDtoList) {
         log.info("Adding guests with booking id: {}", bookingId);
 
@@ -104,9 +102,7 @@ public class BookingServiceImpl implements BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
 
         User user = getCurrentUser();
-        if (user.equals(booking.getUser())) {
-            throw new UnAuthorizedException("Booking does not belong to this user with id: " + user.getId());
-        }
+        assertBookingOwner(booking, user);
 
         if (hasBookingExpired(booking)) {
             throw new IllegalStateException("Booking has already expired");
@@ -117,9 +113,18 @@ public class BookingServiceImpl implements BookingService {
         }
 
         for (GuestDto guestDto : guestDtoList) {
-            Guest guest = modelMapper.map(guestDto, Guest.class);
-            guest.setUser(user);
-            guest = guestRepository.save(guest);
+            Guest guest;
+            if (guestDto.getId() != null) {
+                guest = guestRepository.findById(guestDto.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Guest not found with id: " + guestDto.getId()));
+                if (!Objects.equals(user.getId(), guest.getUser().getId())) {
+                    throw new AccessDeniedException("Guest does not belong to this user with id: " + user.getId());
+                }
+            } else {
+                guest = modelMapper.map(guestDto, Guest.class);
+                guest.setUser(user);
+                guest = guestRepository.save(guest);
+            }
             booking.getGuests().add(guest);
         }
         booking.setBookingStatus(BookingStatus.GUEST_ADDED);
@@ -135,10 +140,7 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
         User user = getCurrentUser();
-
-        if (user.equals(booking.getUser())) {
-            throw new UnAuthorizedException("Booking does not belong to this user with id: " + user.getId());
-        }
+        assertBookingOwner(booking, user);
 
         if (hasBookingExpired(booking)) {
             throw new IllegalStateException("Booking has already expired");
@@ -163,6 +165,11 @@ public class BookingServiceImpl implements BookingService {
             Booking booking = bookingRepository.findByPaymentSessionId(sessionId)
                     .orElseThrow(() -> new ResourceNotFoundException("Booking not found for session id: " + sessionId));
 
+            if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
+                log.info("Booking already confirmed for session id: {}", sessionId);
+                return;
+            }
+
             booking.setBookingStatus(BookingStatus.CONFIRMED);
             bookingRepository.save(booking);
 
@@ -184,10 +191,7 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
         User user = getCurrentUser();
-
-        if (user.equals(booking.getUser())) {
-            throw new UnAuthorizedException("Booking does not belong to this user with id: " + user.getId());
-        }
+        assertBookingOwner(booking, user);
 
         if (booking.getBookingStatus() != BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Only confirmed bookings can be cancelled");
@@ -220,10 +224,7 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
         User user = getCurrentUser();
-
-        if (user.equals(booking.getUser())) {
-            throw new AccessDeniedException("Booking does not belong to this user with id: " + user.getId());
-        }
+        assertBookingOwner(booking, user);
         return booking.getBookingStatus().name();
     }
 
@@ -296,6 +297,43 @@ public class BookingServiceImpl implements BookingService {
 
     public boolean hasBookingExpired(Booking booking) {
         return booking.getCreatedAt().plusMinutes(10).isBefore(LocalDateTime.now());
+    }
+
+    private void assertBookingOwner(Booking booking, User user) {
+        if (!Objects.equals(user.getId(), booking.getUser().getId())) {
+            throw new AccessDeniedException("Booking does not belong to this user with id: " + user.getId());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void expireStaleBookings() {
+        LocalDateTime expiryThreshold = LocalDateTime.now().minusMinutes(10);
+        List<BookingStatus> expireableStatuses = List.of(
+                BookingStatus.RESERVED,
+                BookingStatus.GUEST_ADDED,
+                BookingStatus.PAYMENT_PENDING
+        );
+        List<Booking> staleBookings = bookingRepository
+                .findByBookingStatusInAndCreatedAtBefore(expireableStatuses, expiryThreshold);
+
+        for (Booking booking : staleBookings) {
+            inventoryRepository.findAndLockReservedInventory(
+                    booking.getRoom().getId(),
+                    booking.getCheckInDate(),
+                    booking.getCheckOutDate(),
+                    booking.getRoomsCount()
+            );
+            inventoryRepository.cancelReservation(
+                    booking.getRoom().getId(),
+                    booking.getCheckInDate(),
+                    booking.getCheckOutDate(),
+                    booking.getRoomsCount()
+            );
+            booking.setBookingStatus(BookingStatus.EXPIRED);
+            bookingRepository.save(booking);
+            log.info("Expired stale booking with ID: {}", booking.getId());
+        }
     }
 
 }

@@ -7,7 +7,6 @@ import com.sameerahmed.projects.airBnbApp.entity.User;
 import com.sameerahmed.projects.airBnbApp.entity.enums.Role;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
 import com.sameerahmed.projects.airBnbApp.repository.UserRepository;
-import com.sameerahmed.projects.airBnbApp.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,7 +15,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import javax.management.modelmbean.ModelMBean;
 import java.util.Set;
 
 @Service
@@ -28,12 +26,11 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JWTService jwtService;
-    private final UserService userService;
 
     public UserDto signUp(SignUpRequestDto signUpRequestDto){
         User user = userRepository.findByEmail(signUpRequestDto.getEmail()).orElse(null);
         if(user !=null ){
-            throw new RuntimeException("User is already present with same email");
+            throw new IllegalArgumentException("User is already present with same email");
         }
 
         User newUser = modelMapper.map(signUpRequestDto, User.class);

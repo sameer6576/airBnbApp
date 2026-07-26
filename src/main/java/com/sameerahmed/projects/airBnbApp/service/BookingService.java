@@ -27,4 +27,6 @@ public interface BookingService {
     List<BookingDto> getMyBookings();
 
     UserDto getMyProfile();
+
+    void expireStaleBookings();
 }

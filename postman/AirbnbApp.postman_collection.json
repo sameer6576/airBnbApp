@@ -1,0 +1,436 @@
+{
+  "info": {
+    "_postman_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "name": "Airbnb Hotel Booking API",
+    "description": "Full happy-path collection for the Airbnb-style hotel booking backend.\n\n1. Import this collection and `AirbnbApp.local.postman_environment.json`\n2. Select the Local environment\n3. Run Auth → Admin → Browse & Book → User / Reports\n\nResponses are wrapped as `{ timeStamp, data, error }`. Scripts read tokens/ids from `data`.\n\nWebhook payments: use Stripe CLI — do not call `/webhook/payment` from Postman with a fake signature.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup Guest",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{guestEmail}}\",\n  \"password\": \"{{guestPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/signup",
+            "description": "Register a GUEST user. Ignore 500 if email already exists."
+          }
+        },
+        {
+          "name": "Login Guest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const token = body.data ? body.data.accessToken : body.accessToken;",
+                  "  if (token) pm.environment.set('accessToken', token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{guestEmail}}\",\n  \"password\": \"{{guestPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Saves accessToken. Refresh token is set as HttpOnly cookie."
+          }
+        },
+        {
+          "name": "Login Manager",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const token = body.data ? body.data.accessToken : body.accessToken;",
+                  "  if (token) pm.environment.set('accessToken', token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managerEmail}}\",\n  \"password\": \"{{managerPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Uses seeded manager (app.seed.enabled=true). Saves accessToken."
+          }
+        },
+        {
+          "name": "Refresh Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const token = body.data ? body.data.accessToken : body.accessToken;",
+                  "  if (token) pm.environment.set('accessToken', token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/auth/refresh",
+            "description": "Requires refreshToken cookie from a prior login in the same Postman session."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Create Hotel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const hotel = body.data || body;",
+                  "  if (hotel.id) pm.environment.set('hotelId', String(hotel.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Skyline Suites\",\n  \"city\": \"{{city}}\",\n  \"photos\": [\"https://example.com/hotel.jpg\"],\n  \"amenities\": [\"wifi\", \"pool\"],\n  \"contactInfo\": {\n    \"address\": \"100 Broadway\",\n    \"phoneNumber\": \"+1-555-0100\",\n    \"email\": \"stay@skylinesuites.example\",\n    \"location\": \"Manhattan\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/admin/hotels",
+            "description": "Requires HOTEL_MANAGER. Saves hotelId."
+          }
+        },
+        {
+          "name": "Create Room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const room = body.data || body;",
+                  "  if (room.id) pm.environment.set('roomId', String(room.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Deluxe King\",\n  \"basePrice\": 150.00,\n  \"photos\": [\"https://example.com/room.jpg\"],\n  \"amenities\": [\"king bed\", \"ensuite\"],\n  \"totalCount\": 5,\n  \"capacity\": 2\n}"
+            },
+            "url": "{{baseUrl}}/admin/hotels/{{hotelId}}/rooms",
+            "description": "Saves roomId."
+          }
+        },
+        {
+          "name": "Activate Hotel",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{baseUrl}}/admin/hotels/{{hotelId}}/activate",
+            "description": "Generates ~1 year of inventory for all rooms."
+          }
+        },
+        {
+          "name": "Update Inventory",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"{{checkInDate}}\",\n  \"endDate\": \"{{checkOutDate}}\",\n  \"surgeFactor\": 1.1,\n  \"closed\": false\n}"
+            },
+            "url": "{{baseUrl}}/admin/inventory/rooms/{{roomId}}"
+          }
+        },
+        {
+          "name": "Get Room Inventory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/inventory/rooms/{{roomId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Browse & Book",
+      "item": [
+        {
+          "name": "Search Hotels",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"{{city}}\",\n  \"startDate\": \"{{checkInDate}}\",\n  \"endDate\": \"{{checkOutDate}}\",\n  \"roomsCount\": 1,\n  \"page\": 0,\n  \"size\": 10\n}"
+            },
+            "url": "{{baseUrl}}/hotels/search",
+            "description": "Public. Only returns hotels with availability for every night."
+          }
+        },
+        {
+          "name": "Hotel Info",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/hotels/{{hotelId}}/info"
+          }
+        },
+        {
+          "name": "Init Booking",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Prefer guest token for booking flows — re-login guest if needed"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const booking = body.data || body;",
+                  "  if (booking.id) pm.environment.set('bookingId', String(booking.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hotelId\": {{hotelId}},\n  \"roomId\": {{roomId}},\n  \"checkInDate\": \"{{checkInDate}}\",\n  \"checkOutDate\": \"{{checkOutDate}}\",\n  \"roomsCount\": 1\n}"
+            },
+            "url": "{{baseUrl}}/bookings/init",
+            "description": "Authenticated guest. Saves bookingId. Reservation expires after 10 minutes."
+          }
+        },
+        {
+          "name": "Create Guest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const guest = body.data || body;",
+                  "  if (guest.id) pm.environment.set('guestId', String(guest.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Traveler\",\n  \"gender\": \"FEMALE\",\n  \"age\": 28\n}"
+            },
+            "url": "{{baseUrl}}/guests"
+          }
+        },
+        {
+          "name": "Add Guests to Booking",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"id\": {{guestId}} },\n  { \"name\": \"Bob Traveler\", \"gender\": \"MALE\", \"age\": 30 }\n]"
+            },
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/addGuests",
+            "description": "Attach existing guest by id and/or create inline guests."
+          }
+        },
+        {
+          "name": "Initiate Payment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/payments",
+            "description": "Returns Stripe Checkout sessionUrl in data."
+          }
+        },
+        {
+          "name": "Booking Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/status"
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+            "description": "Only for CONFIRMED bookings; issues Stripe refund."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/getMyProfile"
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Guest\",\n  \"dateOfBirth\": \"1995-05-15\",\n  \"gender\": \"OTHER\"\n}"
+            },
+            "url": "{{baseUrl}}/users/profile"
+          }
+        },
+        {
+          "name": "My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/myBookings"
+          }
+        },
+        {
+          "name": "List My Guests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/guests"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Hotel Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/hotels/{{hotelId}}/bookings",
+            "description": "Login as manager first."
+          }
+        },
+        {
+          "name": "Hotel Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/hotels/{{hotelId}}/reports?startDate=2026-01-01&endDate=2026-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "hotels", "{{hotelId}}", "reports"],
+              "query": [
+                { "key": "startDate", "value": "2026-01-01" },
+                { "key": "endDate", "value": "2026-12-31" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook",
+      "description": "Do not call Stripe webhook from Postman with a fabricated signature.\n\nLocal flow:\n```\nstripe listen --forward-to localhost:8080/api/v1/webhook/payment\n```\nUse the printed webhook signing secret as `stripe.webhook.secret`, then complete Checkout from Initiate Payment.",
+      "item": [
+        {
+          "name": "Stripe CLI instructions",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/hotels/{{hotelId}}/info",
+            "description": "Placeholder request. Real payment confirmation is via Stripe CLI → POST /webhook/payment."
+          }
+        }
+      ]
+    }
+  ]
+}
