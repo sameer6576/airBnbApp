@@ -33,6 +33,7 @@ public class RoomServiceImpl implements RoomService {
     private final ModelMapper modelMapper;
 
     @Override
+    @Transactional
     public RoomDto createNewRoom(Long hotelId, RoomDto roomDto) {
         log.info("Creating a new room in hotel with ID: {}", hotelId);
         Hotel hotel = hotelRepository.findById(hotelId).orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: " + hotelId));

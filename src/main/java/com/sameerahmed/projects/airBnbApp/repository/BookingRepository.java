@@ -22,9 +22,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     Optional<Booking> findByIdempotencyKey(String idempotencyKey);
 
-    List<Booking> findByBookingStatusInAndCreatedAtBefore(Collection<BookingStatus> statuses, LocalDateTime createdAt);
+    List<Booking> findByBookingStatusInAndHoldExpiresAtBefore(Collection<BookingStatus> statuses, LocalDateTime holdExpiresAt);
 
-    List<Booking> findByBookingStatusInAndExpiryWarningSentFalseAndCreatedAtBetween(
+    List<Booking> findByBookingStatusInAndExpiryWarningSentFalseAndHoldExpiresAtBetween(
             Collection<BookingStatus> statuses,
             LocalDateTime start,
             LocalDateTime end

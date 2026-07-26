@@ -44,9 +44,11 @@ Ownership is checked in services by comparing **ids** (`Objects.equals(user.getI
 
 Scheduling is on. Roughly:
 
-- every minute — expire stale unpaid bookings (`RESERVED` / `GUEST_ADDED` / `PAYMENT_PENDING` older than ~10 min) and free `reservedCount`
-- every minute (offset) — expiry warning for bookings about to die
+- every minute — expire unpaid bookings whose `holdExpiresAt` has passed (`RESERVED` / `GUEST_ADDED` / `PAYMENT_PENDING`), free `reservedCount`
+- every minute (offset) — warn when hold is within ~2 minutes of expiring
 - hourly — refresh `HotelMinPrice` for search
+
+Init sets hold to `app.booking.reservation-hold-minutes` (default 10). Starting payment bumps it to `app.booking.payment-hold-minutes` (default 30).
 
 ## Pricing
 

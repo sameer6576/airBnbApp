@@ -70,6 +70,8 @@ public class Booking {
     @Builder.Default
     private Boolean expiryWarningSent = false;
 
+    private LocalDateTime holdExpiresAt;
+
     @Column(precision = 10, scale = 2)
     private BigDecimal refundAmount;
 

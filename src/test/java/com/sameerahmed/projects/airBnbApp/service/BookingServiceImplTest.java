@@ -27,10 +27,13 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,10 +58,15 @@ class BookingServiceImplTest {
     private User owner;
     private User otherUser;
     private Booking booking;
+    private com.sameerahmed.projects.airBnbApp.entity.Room room;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(bookingService, "frontendUrl", "http://localhost:8080");
+        ReflectionTestUtils.setField(bookingService, "reservationHoldMinutes", 10);
+        ReflectionTestUtils.setField(bookingService, "paymentHoldMinutes", 30);
+        ReflectionTestUtils.setField(bookingService, "freeCancelDays", 7);
+        ReflectionTestUtils.setField(bookingService, "partialRefundPercent", 50);
 
         owner = new User();
         owner.setId(1L);
@@ -70,9 +78,13 @@ class BookingServiceImplTest {
         otherUser.setEmail("other@example.com");
         otherUser.setRoles(java.util.Set.of(com.sameerahmed.projects.airBnbApp.entity.enums.Role.GUEST));
 
+        room = new com.sameerahmed.projects.airBnbApp.entity.Room();
+        room.setId(5L);
+
         booking = Booking.builder()
                 .id(10L)
                 .user(owner)
+                .room(room)
                 .bookingStatus(BookingStatus.RESERVED)
                 .checkInDate(LocalDate.now().plusDays(5))
                 .checkOutDate(LocalDate.now().plusDays(7))
@@ -80,6 +92,7 @@ class BookingServiceImplTest {
                 .amount(BigDecimal.valueOf(200))
                 .guests(new HashSet<>())
                 .createdAt(LocalDateTime.now())
+                .holdExpiresAt(LocalDateTime.now().plusMinutes(10))
                 .build();
     }
 
@@ -141,13 +154,9 @@ class BookingServiceImplTest {
 
     @Test
     void expireStaleBookingsReleasesReservation() {
-        com.sameerahmed.projects.airBnbApp.entity.Room room =
-                new com.sameerahmed.projects.airBnbApp.entity.Room();
-        room.setId(5L);
-        booking.setRoom(room);
-        booking.setCreatedAt(LocalDateTime.now().minusMinutes(15));
+        booking.setHoldExpiresAt(LocalDateTime.now().minusMinutes(1));
 
-        when(bookingRepository.findByBookingStatusInAndCreatedAtBefore(any(), any()))
+        when(bookingRepository.findByBookingStatusInAndHoldExpiresAtBefore(any(), any()))
                 .thenReturn(List.of(booking));
 
         bookingService.expireStaleBookings();
@@ -155,6 +164,50 @@ class BookingServiceImplTest {
         verify(inventoryRepository).cancelReservation(5L, booking.getCheckInDate(), booking.getCheckOutDate(), 1);
         assertEquals(BookingStatus.EXPIRED, booking.getBookingStatus());
         verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void cancelUnpaidBookingReleasesHoldWithoutRefund() {
+        authenticate(owner);
+        when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelPayment(10L);
+
+        verify(inventoryRepository).cancelReservation(eq(5L), any(), any(), eq(1));
+        verify(inventoryRepository, never()).cancelBooking(anyLong(), any(), any(), anyInt());
+        assertEquals(BookingStatus.CANCELLED, booking.getBookingStatus());
+        assertEquals(BigDecimal.ZERO, booking.getRefundAmount());
+        verify(notificationService).sendBookingCancelled(booking, BigDecimal.ZERO);
+    }
+
+    @Test
+    void initiatePaymentsExtendsHoldAndAllowsReservedWithoutGuests() {
+        authenticate(owner);
+        when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
+        when(checkoutService.getCheckoutSession(any(), any(), any())).thenReturn("https://checkout.stripe.test");
+        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        LocalDateTime before = LocalDateTime.now();
+        String url = bookingService.initiatePayments(10L);
+
+        assertEquals("https://checkout.stripe.test", url);
+        assertEquals(BookingStatus.PAYMENT_PENDING, booking.getBookingStatus());
+        assertTrue(booking.getHoldExpiresAt().isAfter(before.plusMinutes(25)));
+        assertFalse(booking.getExpiryWarningSent());
+    }
+
+    @Test
+    void hasBookingExpiredUsesHoldExpiresAt() {
+        booking.setHoldExpiresAt(LocalDateTime.now().minusSeconds(1));
+        assertTrue(bookingService.hasBookingExpired(booking));
+
+        booking.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5));
+        assertFalse(bookingService.hasBookingExpired(booking));
+
+        booking.setBookingStatus(BookingStatus.CONFIRMED);
+        booking.setHoldExpiresAt(LocalDateTime.now().minusHours(1));
+        assertFalse(bookingService.hasBookingExpired(booking));
     }
 
     private void authenticate(User user) {

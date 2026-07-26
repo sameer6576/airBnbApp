@@ -27,14 +27,14 @@ GET  /hotels/{hotelId}/reviews
 ### Bookings (logged in)
 
 ```
-POST   /bookings/init                    # optional Idempotency-Key header
-POST   /bookings/{id}/addGuests
+POST   /bookings/init                    # optional Idempotency-Key
+POST   /bookings/{id}/addGuests          # optional; also ok after payment started
 PUT    /bookings/{id}/guests
 PATCH  /bookings/{id}/dates
-POST   /bookings/{id}/payments           # returns Stripe sessionUrl
+POST   /bookings/{id}/payments           # guests not required; extends hold
 GET    /bookings/{id}/status
-GET    /bookings/{id}/cancellation-quote
-POST   /bookings/{id}/cancel
+GET    /bookings/{id}/cancellation-quote # $0 if unpaid
+POST   /bookings/{id}/cancel             # unpaid or confirmed
 ```
 
 ### Guests / profile / wishlist

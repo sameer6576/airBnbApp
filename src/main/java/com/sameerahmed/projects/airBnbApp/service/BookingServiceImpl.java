@@ -58,6 +58,12 @@ public class BookingServiceImpl implements BookingService {
     @Value("${app.cancellation.partial-refund-percent:50}")
     private int partialRefundPercent;
 
+    @Value("${app.booking.reservation-hold-minutes:10}")
+    private int reservationHoldMinutes;
+
+    @Value("${app.booking.payment-hold-minutes:30}")
+    private int paymentHoldMinutes;
+
     @Override
     @Transactional
     public BookingDto initialiseBooking(BookingRequest bookingRequest) {
@@ -126,6 +132,7 @@ public class BookingServiceImpl implements BookingService {
                 .amount(totalPrice)
                 .guests(new HashSet<>())
                 .expiryWarningSent(false)
+                .holdExpiresAt(LocalDateTime.now().plusMinutes(reservationHoldMinutes))
                 .idempotencyKey(scopedIdempotencyKey)
                 .idempotencyFingerprint(fingerprint)
                 .build();
@@ -157,8 +164,10 @@ public class BookingServiceImpl implements BookingService {
             throw new IllegalStateException("Booking has already expired");
         }
 
-        if (booking.getBookingStatus() != BookingStatus.RESERVED) {
-            throw new IllegalStateException("Booking is not under reserved state, cannot add guests");
+        if (booking.getBookingStatus() != BookingStatus.RESERVED
+                && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.PAYMENT_PENDING) {
+            throw new IllegalStateException("Guests cannot be added in status " + booking.getBookingStatus());
         }
 
         for (GuestDto guestDto : guestDtoList) {
@@ -176,7 +185,9 @@ public class BookingServiceImpl implements BookingService {
             }
             booking.getGuests().add(guest);
         }
-        booking.setBookingStatus(BookingStatus.GUEST_ADDED);
+        if (!guestDtoList.isEmpty() && booking.getBookingStatus() == BookingStatus.RESERVED) {
+            booking.setBookingStatus(BookingStatus.GUEST_ADDED);
+        }
         bookingRepository.save(booking);
 
         return modelMapper.map(booking, BookingDto.class);
@@ -195,9 +206,18 @@ public class BookingServiceImpl implements BookingService {
             throw new IllegalStateException("Booking has already expired");
         }
 
-        String sessionUrl = checkoutService.getCheckoutSession(booking, frontendUrl + "/payments/success", frontendUrl + "/payments/failure");
+        if (booking.getBookingStatus() != BookingStatus.RESERVED
+                && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.PAYMENT_PENDING) {
+            throw new IllegalStateException("Payment cannot be started in status " + booking.getBookingStatus());
+        }
+
+        String sessionUrl = checkoutService.getCheckoutSession(booking,
+                frontendUrl + "/payments/success", frontendUrl + "/payments/failure");
 
         booking.setBookingStatus(BookingStatus.PAYMENT_PENDING);
+        booking.setHoldExpiresAt(LocalDateTime.now().plusMinutes(paymentHoldMinutes));
+        booking.setExpiryWarningSent(false);
         bookingRepository.save(booking);
         return sessionUrl;
     }
@@ -243,8 +263,13 @@ public class BookingServiceImpl implements BookingService {
         User user = getCurrentUser();
         assertBookingOwner(booking, user);
 
+        if (isUnpaidHold(booking.getBookingStatus())) {
+            cancelUnpaidBooking(booking);
+            return;
+        }
+
         if (booking.getBookingStatus() != BookingStatus.CONFIRMED) {
-            throw new IllegalStateException("Only confirmed bookings can be cancelled");
+            throw new IllegalStateException("Booking cannot be cancelled in status " + booking.getBookingStatus());
         }
 
         CancellationQuoteDto quote = buildCancellationQuote(booking);
@@ -279,13 +304,42 @@ public class BookingServiceImpl implements BookingService {
         log.info("Successfully cancelled booking {} with refund {}", booking.getId(), refundAmount);
     }
 
+    private void cancelUnpaidBooking(Booking booking) {
+        inventoryRepository.findAndLockReservedInventory(
+                booking.getRoom().getId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getRoomsCount()
+        );
+        inventoryRepository.cancelReservation(
+                booking.getRoom().getId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getRoomsCount()
+        );
+        booking.setBookingStatus(BookingStatus.CANCELLED);
+        booking.setRefundAmount(BigDecimal.ZERO);
+        bookingRepository.save(booking);
+        notificationService.sendBookingCancelled(booking, BigDecimal.ZERO);
+        log.info("Cancelled unpaid booking {}", booking.getId());
+    }
+
+    private boolean isUnpaidHold(BookingStatus status) {
+        return status == BookingStatus.RESERVED
+                || status == BookingStatus.GUEST_ADDED
+                || status == BookingStatus.PAYMENT_PENDING;
+    }
+
     @Override
     public CancellationQuoteDto getCancellationQuote(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
         assertBookingOwner(booking, getCurrentUser());
+        if (isUnpaidHold(booking.getBookingStatus())) {
+            return new CancellationQuoteDto(true, 0, freeCancelDays, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
         if (booking.getBookingStatus() != BookingStatus.CONFIRMED) {
-            throw new IllegalStateException("Cancellation quote is only available for confirmed bookings");
+            throw new IllegalStateException("Cancellation quote is only available for unpaid or confirmed bookings");
         }
         return buildCancellationQuote(booking);
     }
@@ -300,6 +354,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (booking.getBookingStatus() != BookingStatus.RESERVED
                 && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.PAYMENT_PENDING
                 && booking.getBookingStatus() != BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Booking cannot be modified in status " + booking.getBookingStatus());
         }
@@ -349,6 +404,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (booking.getBookingStatus() != BookingStatus.RESERVED
                 && booking.getBookingStatus() != BookingStatus.GUEST_ADDED
+                && booking.getBookingStatus() != BookingStatus.PAYMENT_PENDING
                 && booking.getBookingStatus() != BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Guests cannot be modified in status " + booking.getBookingStatus());
         }
@@ -515,7 +571,16 @@ public class BookingServiceImpl implements BookingService {
     }
 
     public boolean hasBookingExpired(Booking booking) {
-        return booking.getCreatedAt().plusMinutes(10).isBefore(LocalDateTime.now());
+        if (booking.getBookingStatus() == BookingStatus.CONFIRMED
+                || booking.getBookingStatus() == BookingStatus.CANCELLED
+                || booking.getBookingStatus() == BookingStatus.EXPIRED) {
+            return false;
+        }
+        LocalDateTime deadline = booking.getHoldExpiresAt();
+        if (deadline == null && booking.getCreatedAt() != null) {
+            deadline = booking.getCreatedAt().plusMinutes(reservationHoldMinutes);
+        }
+        return deadline != null && deadline.isBefore(LocalDateTime.now());
     }
 
     private void assertBookingOwner(Booking booking, User user) {
@@ -550,15 +615,15 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public void sendExpiryWarnings() {
-        LocalDateTime windowStart = LocalDateTime.now().minusMinutes(10);
-        LocalDateTime windowEnd = LocalDateTime.now().minusMinutes(8);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime warnUntil = now.plusMinutes(2);
         List<BookingStatus> statuses = List.of(
                 BookingStatus.RESERVED,
                 BookingStatus.GUEST_ADDED,
                 BookingStatus.PAYMENT_PENDING
         );
         List<Booking> soonToExpire = bookingRepository
-                .findByBookingStatusInAndExpiryWarningSentFalseAndCreatedAtBetween(statuses, windowStart, windowEnd);
+                .findByBookingStatusInAndExpiryWarningSentFalseAndHoldExpiresAtBetween(statuses, now, warnUntil);
         for (Booking booking : soonToExpire) {
             notificationService.sendBookingExpiryWarning(booking);
             booking.setExpiryWarningSent(true);
@@ -569,14 +634,13 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public void expireStaleBookings() {
-        LocalDateTime expiryThreshold = LocalDateTime.now().minusMinutes(10);
         List<BookingStatus> expireableStatuses = List.of(
                 BookingStatus.RESERVED,
                 BookingStatus.GUEST_ADDED,
                 BookingStatus.PAYMENT_PENDING
         );
         List<Booking> staleBookings = bookingRepository
-                .findByBookingStatusInAndCreatedAtBefore(expireableStatuses, expiryThreshold);
+                .findByBookingStatusInAndHoldExpiresAtBefore(expireableStatuses, LocalDateTime.now());
 
         for (Booking booking : staleBookings) {
             inventoryRepository.findAndLockReservedInventory(

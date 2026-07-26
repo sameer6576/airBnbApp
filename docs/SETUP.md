@@ -49,6 +49,10 @@ app.holidays.dates[2]=07-04
 app.cancellation.free-cancel-days=7
 app.cancellation.partial-refund-percent=50
 
+# Soft holds: short on init, longer once Stripe Checkout starts
+app.booking.reservation-hold-minutes=10
+app.booking.payment-hold-minutes=30
+
 # notifications just log unless you flip this on
 app.mail.enabled=false
 app.mail.from=noreply@airbnbapp.local
@@ -62,6 +66,7 @@ Notes:
 - `jwt.secretKey` should be long enough for HS (32+ chars)
 - `frontend.url` is where Stripe sends people after checkout
 - holiday dates are month-day only (`MM-dd`)
+- hold minutes control when unpaid bookings auto-expire (`holdExpiresAt`)
 
 ## Run
 
@@ -84,7 +89,7 @@ In Swagger hit Authorize and paste `Bearer <accessToken>`.
 
 Import both files under `postman/`, pick the "AirbnbApp Local" env.
 
-Rough order that works: login as manager → create hotel → room → activate → maybe tweak inventory. Then login as guest → search → init booking → add guests → payments.
+Rough order that works: login as manager → create hotel → room → activate → optional create room after activate. Then login as guest → search → init → payments (guests optional) → Stripe. Cancel works on unpaid holds too.
 
 Login requests save `accessToken` into the env; the collection uses Bearer `{{accessToken}}`.
 
