@@ -40,6 +40,10 @@ public class AuthController {
         String[] tokens = authService.login(loginDto);
         Cookie cookie = new Cookie("refreshToken", tokens[1]);
         cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(60 * 60 * 24 * 30 * 6);
+        // localhost SPA + API on different ports: Lax is enough for same-site localhost
+        cookie.setAttribute("SameSite", "Lax");
         httpServletResponse.addCookie(cookie);
         return ResponseEntity.ok(new LoginResponseDto(tokens[0]));
     }
