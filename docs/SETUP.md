@@ -30,9 +30,12 @@ server.servlet.context-path=/api/v1
 
 jwt.secretKey=ThisIsASecretKeyThatIsAtLeast32CharactersLong123456
 
-frontend.url=http://localhost:8080
+frontend.url=http://localhost:5173
 stripe.secret.key=sk_test_...
 stripe.webhook.secret=whsec_...
+
+# SPA origin (comma-separated if needed)
+app.cors.allowed-origins=http://localhost:5173
 
 app.seed.enabled=true
 app.seed.manager.email=manager@example.com
@@ -64,9 +67,10 @@ app.mail.from=noreply@airbnbapp.local
 
 Notes:
 - `jwt.secretKey` should be long enough for HS (32+ chars)
-- `frontend.url` is where Stripe sends people after checkout
+- `frontend.url=http://localhost:5173` so Stripe returns to the Stayline UI
 - holiday dates are month-day only (`MM-dd`)
 - hold minutes control when unpaid bookings auto-expire (`holdExpiresAt`)
+- CORS allows the Vite origin via `app.cors.allowed-origins`
 
 ## Run
 
@@ -82,8 +86,19 @@ Port 8080, context `/api/v1`.
 
 - Swagger UI: http://localhost:8080/api/v1/swagger-ui.html  
 - OpenAPI JSON: http://localhost:8080/api/v1/v3/api-docs  
+- Stayline UI: see [frontend/README.md](../frontend/README.md) (`npm run dev` → http://localhost:5173)
 
 In Swagger hit Authorize and paste `Bearer <accessToken>`.
+
+## Frontend (Stayline)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Log in as manager seed user to create hotels, or sign up as a guest to book.
 
 ## Postman
 

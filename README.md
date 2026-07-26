@@ -1,13 +1,15 @@
 # airBnbApp
 
-Spring Boot API for hotel search + booking (Airbnb-ish). No frontend here — hit it with Postman or Swagger.
+Spring Boot API for hotel search + booking, plus a React UI (**Stayline**) in [`frontend/`](frontend/).
 
-Base URL: `http://localhost:8080/api/v1`
+**API:** `http://localhost:8080/api/v1`  
+**UI:** `http://localhost:5173`
 
 ## Docs
 
-- [docs/SETUP.md](docs/SETUP.md) — Postgres, properties, Stripe, how to run
-- [docs/FLOWS.md](docs/FLOWS.md) — walkthroughs (manager listing, guest booking, etc.)
+- [docs/SETUP.md](docs/SETUP.md) — Postgres, properties, Stripe, frontend
+- [frontend/README.md](frontend/README.md) — Stayline UI
+- [docs/FLOWS.md](docs/FLOWS.md) — walkthroughs
 - [docs/DOMAIN.md](docs/DOMAIN.md) — inventory, booking statuses, pricing
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — package layout, security, jobs
 - [docs/API.md](docs/API.md) — endpoint cheat sheet
@@ -15,13 +17,16 @@ Base URL: `http://localhost:8080/api/v1`
 
 ## Stack
 
-Java 21, Spring Boot 4.1, Security + JWT, JPA/Postgres, Stripe Checkout, ModelMapper, springdoc. Maven wrapper is in the repo (`mvnw` / `mvnw.cmd`).
+Java 21, Spring Boot 4.1, Security + JWT, JPA/Postgres, Stripe Checkout, ModelMapper, springdoc. UI: React + Vite + TypeScript. Maven wrapper in the repo (`mvnw` / `mvnw.cmd`).
 
 ## Quick start
 
 1. Create a Postgres DB named `airBnb`
-2. Copy your settings into `src/main/resources/application.properties` (gitignored — see SETUP for keys)
-3. `mvnw.cmd spring-boot:run`
+2. Configure `src/main/resources/application.properties` (gitignored — see SETUP). Include:
+   - `frontend.url=http://localhost:5173`
+   - `app.seed.enabled=true` (optional)
+3. API: `mvnw.cmd spring-boot:run`
+4. UI: `cd frontend && npm install && npm run dev`
 
 Swagger: http://localhost:8080/api/v1/swagger-ui.html
 
