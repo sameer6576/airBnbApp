@@ -30,6 +30,7 @@ Guests: use Sign up in the UI.
 ## What works
 
 - Guest: search → hotel → book → optional guests → Stripe pay → my bookings / cancel
+- Hold countdown from `holdExpiresAt`; `REFUNDED` / `EXPIRED` messaging; logout clears API refresh cookie
 - Manager: create hotel → rooms → activate → view bookings
 
 Confirming payment still needs Stripe CLI:

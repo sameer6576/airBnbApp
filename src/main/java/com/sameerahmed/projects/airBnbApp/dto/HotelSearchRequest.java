@@ -15,7 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Data
-@ValidDateRange(startField = "startDate", endField = "endDate")
+@ValidDateRange(startField = "startDate", endField = "endDate", allowEqual = false,
+        message = "check-out date must be after check-in date")
 public class HotelSearchRequest {
     @NotBlank
     private String city;
@@ -47,10 +48,15 @@ public class HotelSearchRequest {
 
     private SearchSort sortBy = SearchSort.PRICE_ASC;
 
+    // Bounded on both ends. Results are filtered, sorted and paged in memory, so an
+    // unbounded size is a cheap way to make the server do a lot of work, and an
+    // unbounded page overflowed int arithmetic in the paging maths.
     @Min(0)
+    @Max(10_000)
     private Integer page = 0;
 
     @Min(1)
+    @Max(100)
     private Integer size = 10;
 
     public enum SearchSort {

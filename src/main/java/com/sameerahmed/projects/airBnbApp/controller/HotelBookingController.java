@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.Map;
 @RequestMapping("/bookings")
 @Tag(name = "Bookings")
 @SecurityRequirement(name = "bearerAuth")
+@Validated
 public class HotelBookingController {
 
     private final BookingService bookingService;
@@ -29,12 +31,14 @@ public class HotelBookingController {
     }
 
     @PostMapping("/{bookingId}/addGuests")
-    public ResponseEntity<BookingDto> addGuests(@PathVariable Long bookingId, @RequestBody List<GuestDto> guestDtos) {
+    public ResponseEntity<BookingDto> addGuests(@PathVariable Long bookingId,
+                                                @RequestBody List<@Valid GuestDto> guestDtos) {
         return ResponseEntity.ok(bookingService.addGuests(bookingId, guestDtos));
     }
 
     @PutMapping("/{bookingId}/guests")
-    public ResponseEntity<BookingDto> replaceGuests(@PathVariable Long bookingId, @RequestBody List<GuestDto> guestDtos) {
+    public ResponseEntity<BookingDto> replaceGuests(@PathVariable Long bookingId,
+                                                    @RequestBody List<@Valid GuestDto> guestDtos) {
         return ResponseEntity.ok(bookingService.replaceGuests(bookingId, guestDtos));
     }
 

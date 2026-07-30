@@ -46,8 +46,12 @@ public class HotelMinPriceServiceImpl implements HotelMinPriceService {
                         endDate
                 );
 
-        // Remove existing minimum prices for the hotel
+        // Remove existing minimum prices for the hotel, then flush before
+        // inserting. Hibernate orders inserts ahead of deletes within a single
+        // flush, so without this the new rows hit the database while the old ones
+        // are still present and violate the (hotel_id, date) unique constraint.
         hotelMinPriceRepository.deleteByHotel(hotel);
+        hotelMinPriceRepository.flush();
 
         // Prepare new HotelMinPrice entities
         List<HotelMinPrice> hotelMinPrices = new ArrayList<>();

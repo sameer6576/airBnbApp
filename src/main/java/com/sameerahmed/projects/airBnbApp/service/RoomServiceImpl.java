@@ -30,6 +30,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomRepository roomRepository;
     private final HotelRepository hotelRepository;
     private final InventoryService inventoryService;
+    private final HotelMinPriceService hotelMinPriceService;
     private final ModelMapper modelMapper;
 
     @Override
@@ -49,7 +50,8 @@ public class RoomServiceImpl implements RoomService {
         room = roomRepository.save(room);
 
         if (hotel.getActive()) {
-            inventoryService.initializeRoomForAYear(room);
+            inventoryService.ensureInventoryHorizon(room);
+            hotelMinPriceService.updateHotelMinPrice(hotel.getId());
         }
 
         return modelMapper.map(room, RoomDto.class);
@@ -74,6 +76,13 @@ public class RoomServiceImpl implements RoomService {
     public RoomDto getRoomById(Long roomId) {
         log.info("Getting the room with ID: {}", roomId);
         Room room = roomRepository.findById(roomId).orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: " + roomId));
+
+        User user = getCurrentUser();
+
+        if (!Objects.equals(user.getId(), room.getHotel().getOwner().getId())) {
+            throw new AccessDeniedException("This user does not own this hotel with id: " + room.getHotel().getId());
+        }
+
         return modelMapper.map(room, RoomDto.class);
     }
 
@@ -107,6 +116,10 @@ public class RoomServiceImpl implements RoomService {
 
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: "+roomId));
+
+        if (!Objects.equals(hotelId, room.getHotel().getId())) {
+            throw new AccessDeniedException("Room with ID: "+roomId+" does not belong to hotel with ID: "+hotelId);
+        }
 
         BigDecimal previousBasePrice = room.getBasePrice();
         Integer previousTotalCount = room.getTotalCount();

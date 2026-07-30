@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { authApi, userApi } from '../api';
-import { decodeJwtPayload, getAccessToken, setAccessToken } from '../api/client';
+import { ApiError, decodeJwtPayload, getAccessToken, onAuthFailure } from '../api/client';
 import type { Role, UserDto } from '../types';
 
 interface AuthState {
@@ -17,7 +17,7 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isManager: boolean;
   refreshProfile: () => Promise<void>;
 }
@@ -55,15 +55,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = await userApi.profile();
       setUser(profile);
       if (profile.roles?.length) setRoles(profile.roles);
-    } catch {
+    } catch (e) {
       setUser(null);
-      setRoles(rolesFromToken(token));
+      // A 401 here means the token is genuinely dead, so the token-derived roles
+      // must go too — otherwise the header shows manager links next to "Log in".
+      // Any other failure is treated as transient.
+      setRoles(e instanceof ApiError && e.status === 401 ? [] : rolesFromToken(token));
     }
   }, []);
 
   useEffect(() => {
     refreshProfile().finally(() => setLoading(false));
   }, [refreshProfile]);
+
+  useEffect(
+    () =>
+      onAuthFailure(() => {
+        setUser(null);
+        setRoles([]);
+      }),
+    [],
+  );
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -79,10 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   }, [refreshProfile]);
 
-  const logout = useCallback(() => {
-    setAccessToken(null);
-    setUser(null);
-    setRoles([]);
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      setUser(null);
+      setRoles([]);
+    }
   }, []);
 
   const isManager = roles.includes('HOTEL_MANAGER') || roles.includes('ADMIN');

@@ -6,7 +6,8 @@ export type BookingStatus =
   | 'PAYMENT_PENDING'
   | 'CONFIRMED'
   | 'CANCELLED'
-  | 'EXPIRED';
+  | 'EXPIRED'
+  | 'REFUNDED';
 
 export interface UserDto {
   id: number;
@@ -76,10 +77,12 @@ export interface HotelSearchRequest {
   size?: number;
 }
 
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+
 export interface GuestDto {
   id?: number;
   name?: string;
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  gender?: Gender;
   age?: number;
 }
 
@@ -91,6 +94,9 @@ export interface BookingDto {
   bookingStatus: BookingStatus;
   amount: number;
   guests?: GuestDto[];
+  /** ISO timestamp when the soft hold lapses. Absent once the booking is settled. */
+  holdExpiresAt?: string | null;
+  refundAmount?: number | null;
 }
 
 export interface BookingRequest {

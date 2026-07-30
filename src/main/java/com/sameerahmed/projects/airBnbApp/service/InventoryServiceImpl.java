@@ -10,9 +10,11 @@ import com.sameerahmed.projects.airBnbApp.repository.HotelMinPriceRepository;
 import com.sameerahmed.projects.airBnbApp.repository.HotelRepository;
 import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
 import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
+import com.sameerahmed.projects.airBnbApp.strategy.PricingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
@@ -23,8 +25,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.sameerahmed.projects.airBnbApp.util.AppUtils.getCurrentUser;
@@ -40,35 +44,79 @@ public class InventoryServiceImpl implements InventoryService {
     private final RoomRepository roomRepository;
     private final HotelRepository hotelRepository;
     private final HotelMinPriceService hotelMinPriceService;
+    private final PricingService pricingService;
+
+    /**
+     * How far ahead inventory is generated. The roll-forward job keeps this many
+     * days populated, so the bookable window stays constant instead of decaying.
+     */
+    @Value("${app.inventory.horizon-days:365}")
+    private int horizonDays;
 
     @Override
     @Transactional
-    public void initializeRoomForAYear(Room room) {
+    public int ensureInventoryHorizon(Room room) {
+        Hotel hotel = room.getHotel();
         LocalDate today = LocalDate.now();
-        LocalDate endDate = today.plusYears(1);
+        LocalDate horizonEnd = today.plusDays(horizonDays);
+
+        // Generating only the dates that are missing is what makes this safe to
+        // call repeatedly. The previous version always generated a fixed year from
+        // today, so a second call collided with the (hotel_id, room_id, date)
+        // unique constraint, and nothing ever extended the horizon afterwards —
+        // the bookable window shrank by a day every day.
+        Set<LocalDate> existing = new HashSet<>(
+                inventoryRepository.findExistingDates(room.getId(), today, horizonEnd));
 
         List<Inventory> inventories = new ArrayList<>();
-
-        for (; !today.isAfter(endDate); today = today.plusDays(1)) {
+        for (LocalDate date = today; !date.isAfter(horizonEnd); date = date.plusDays(1)) {
+            if (existing.contains(date)) {
+                continue;
+            }
             inventories.add(
                     Inventory.builder()
-                            .hotel(room.getHotel())
+                            .hotel(hotel)
                             .room(room)
+                            .city(hotel.getCity())
+                            .date(date)
+                            .price(room.getBasePrice())
+                            .totalCount(room.getTotalCount())
                             .bookedCount(0)
                             .reservedCount(0)
-                            .city(room.getHotel().getCity())
-                            .date(today)
-                            .price(room.getBasePrice())
                             .surgeFactor(BigDecimal.ONE)
-                            .totalCount(room.getTotalCount())
                             .closed(false)
                             .build()
             );
         }
 
-        inventoryRepository.saveAllAndFlush(inventories);
+        if (inventories.isEmpty()) {
+            return 0;
+        }
 
-        hotelMinPriceService.updateHotelMinPrice(room.getHotel().getId());
+        inventoryRepository.saveAll(inventories);
+        log.debug("Created {} inventory rows for room {}", inventories.size(), room.getId());
+        return inventories.size();
+    }
+
+    @Override
+    @Transactional
+    public void refreshHotelInventory(Hotel hotel) {
+        // Rooms are re-read rather than taken from hotel.getRooms(), which can be a
+        // stale collection when a room was just added in this transaction.
+        List<Room> rooms = roomRepository.findByHotel(hotel);
+
+        int created = 0;
+        for (Room room : rooms) {
+            created += ensureInventoryHorizon(room);
+        }
+
+        // Once per hotel, not once per room: updateHotelMinPrice deletes and
+        // reinserts a year of rows, so doing it per room made an N-room hotel do N
+        // full passes over the same table.
+        if (created > 0) {
+            hotelMinPriceService.updateHotelMinPrice(hotel.getId());
+            log.info("Extended inventory for hotel {} by {} rows", hotel.getId(), created);
+        }
     }
 
     @Override
@@ -83,13 +131,16 @@ public class InventoryServiceImpl implements InventoryService {
                 request.getMinPrice(), request.getMaxPrice(), request.getMinRating(),
                 request.getMinCapacity(), request.getAmenities(), request.getSortBy());
 
-        Long dateCount = ChronoUnit.DAYS.between(request.getStartDate(), request.getEndDate()) + 1;
+        // Nights, not calendar days: the check-out date is not occupied. This must
+        // agree with BookingServiceImpl.nightsCovered, or search and booking will
+        // disagree about whether a stay is available.
+        Long nightCount = ChronoUnit.DAYS.between(request.getStartDate(), request.getEndDate());
         List<HotelPriceDto> results = hotelMinPriceRepository.findHotelWithAvailableInventory(
                 request.getCity(),
                 request.getStartDate(),
                 request.getEndDate(),
                 request.getRoomsCount(),
-                dateCount,
+                nightCount,
                 request.getMinPrice(),
                 request.getMaxPrice(),
                 request.getMinRating(),
@@ -119,8 +170,10 @@ public class InventoryServiceImpl implements InventoryService {
 
         int page = request.getPage() == null ? 0 : request.getPage();
         int size = request.getSize() == null ? 10 : request.getSize();
-        int from = Math.min(page * size, results.size());
-        int to = Math.min(from + size, results.size());
+        // long arithmetic: page * size overflowed int for large pages, went negative,
+        // and subList then threw IndexOutOfBoundsException as a 500.
+        int from = (int) Math.min((long) page * size, results.size());
+        int to = (int) Math.min((long) from + size, results.size());
         List<HotelPriceDto> pageContent = results.subList(from, to);
 
         return new org.springframework.data.domain.PageImpl<>(
@@ -205,12 +258,34 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     public void syncFutureInventoryForRoom(Room room) {
         log.info("Syncing future inventory for room ID: {}", room.getId());
-        inventoryRepository.updateFutureInventoryForRoom(
-                room.getId(),
-                LocalDate.now(),
-                room.getBasePrice(),
-                room.getTotalCount()
-        );
+
+        List<Inventory> future = inventoryRepository.findByRoomAndDateGreaterThanEqual(room, LocalDate.now());
+        int newTotalCount = room.getTotalCount();
+
+        // Validate before mutating anything. Lowering totalCount below what is
+        // already sold or held would oversell those nights, and nothing checked for
+        // it: availability is totalCount - bookedCount - reservedCount, so the
+        // shortfall simply became negative availability.
+        List<LocalDate> oversold = future.stream()
+                .filter(i -> newTotalCount < i.getBookedCount() + i.getReservedCount())
+                .map(Inventory::getDate)
+                .limit(5)
+                .toList();
+
+        if (!oversold.isEmpty()) {
+            throw new IllegalStateException("Cannot reduce room " + room.getId() + " to " + newTotalCount
+                    + " units: more are already booked or held on " + oversold);
+        }
+
+        for (Inventory inventory : future) {
+            inventory.setTotalCount(newTotalCount);
+            // Recompute rather than writing the raw base price. This column is what
+            // search reads and what a booking is charged, so overwriting it with the
+            // base price silently discarded surge, occupancy, urgency and holiday.
+            inventory.setPrice(pricingService.calculateDynamicPricing(inventory));
+        }
+
+        inventoryRepository.saveAll(future);
         hotelMinPriceService.updateHotelMinPrice(room.getHotel().getId());
     }
 

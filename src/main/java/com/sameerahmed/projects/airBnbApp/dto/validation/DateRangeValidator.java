@@ -10,11 +10,13 @@ public class DateRangeValidator implements ConstraintValidator<ValidDateRange, O
 
     private String startField;
     private String endField;
+    private boolean allowEqual;
 
     @Override
     public void initialize(ValidDateRange annotation) {
         this.startField = annotation.startField();
         this.endField = annotation.endField();
+        this.allowEqual = annotation.allowEqual();
     }
 
     @Override
@@ -28,7 +30,7 @@ public class DateRangeValidator implements ConstraintValidator<ValidDateRange, O
             if (start == null || end == null) {
                 return true;
             }
-            return !end.isBefore(start);
+            return allowEqual ? !end.isBefore(start) : end.isAfter(start);
         } catch (Exception e) {
             return false;
         }

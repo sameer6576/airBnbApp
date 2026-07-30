@@ -7,6 +7,7 @@ import com.sameerahmed.projects.airBnbApp.service.BookingService;
 import com.sameerahmed.projects.airBnbApp.service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,7 @@ public class UserController {
     private final BookingService bookingService;
 
     @PatchMapping("/profile")
-    public ResponseEntity<Void> updateProfile(@RequestBody UserProfileUpdateDto userProfileUpdateDto) {
+    public ResponseEntity<Void> updateProfile(@Valid @RequestBody UserProfileUpdateDto userProfileUpdateDto) {
         userService.updateProfile(userProfileUpdateDto);
         return ResponseEntity.noContent().build();
     }

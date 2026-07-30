@@ -32,5 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# Application secrets
-src/main/resources/application.properties
+### macOS ###
+.DS_Store
+__MACOSX/
+
+# Application secrets.
+#
+# application.properties holds shared, non-secret config and application-prod
+# .properties resolves everything from environment variables, so both are safe to
+# commit. The dev profile is the only file that carries real credentials, so it is
+# the only one ignored — commit application-dev.properties.example instead.
+src/main/resources/application-dev.properties

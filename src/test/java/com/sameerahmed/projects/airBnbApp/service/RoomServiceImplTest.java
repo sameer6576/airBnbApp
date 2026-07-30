@@ -33,6 +33,7 @@ class RoomServiceImplTest {
     @Mock private RoomRepository roomRepository;
     @Mock private HotelRepository hotelRepository;
     @Mock private InventoryService inventoryService;
+    @Mock private HotelMinPriceService hotelMinPriceService;
     @Mock private ModelMapper modelMapper;
 
     @InjectMocks
@@ -91,8 +92,9 @@ class RoomServiceImplTest {
         roomService.createNewRoom(3L, request);
 
         ArgumentCaptor<Room> roomCaptor = ArgumentCaptor.forClass(Room.class);
-        verify(inventoryService).initializeRoomForAYear(roomCaptor.capture());
+        verify(inventoryService).ensureInventoryHorizon(roomCaptor.capture());
         assertEquals(9L, roomCaptor.getValue().getId());
+        verify(hotelMinPriceService).updateHotelMinPrice(3L);
     }
 
     @Test
@@ -113,6 +115,7 @@ class RoomServiceImplTest {
 
         roomService.createNewRoom(3L, request);
 
-        verify(inventoryService, never()).initializeRoomForAYear(any());
+        verify(inventoryService, never()).ensureInventoryHorizon(any());
+        verify(hotelMinPriceService, never()).updateHotelMinPrice(any());
     }
 }

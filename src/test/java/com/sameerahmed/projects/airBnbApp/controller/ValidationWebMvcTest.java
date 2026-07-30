@@ -1,12 +1,12 @@
 package com.sameerahmed.projects.airBnbApp.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sameerahmed.projects.airBnbApp.advice.GlobalExceptionHandler;
 import com.sameerahmed.projects.airBnbApp.dto.HotelSearchRequest;
 import com.sameerahmed.projects.airBnbApp.dto.LoginDto;
 import com.sameerahmed.projects.airBnbApp.dto.SignUpRequestDto;
 import com.sameerahmed.projects.airBnbApp.security.AuthService;
 import com.sameerahmed.projects.airBnbApp.security.JWTAuthFilter;
+import com.sameerahmed.projects.airBnbApp.security.JWTService;
 import com.sameerahmed.projects.airBnbApp.service.HotelService;
 import com.sameerahmed.projects.airBnbApp.service.InventoryService;
 import org.junit.jupiter.api.Test;
@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 
@@ -46,6 +47,9 @@ class ValidationWebMvcTest {
 
     @MockitoBean
     private JWTAuthFilter jwtAuthFilter;
+
+    @MockitoBean
+    private JWTService jwtService;
 
     @Test
     void signupRejectsInvalidEmail() throws Exception {

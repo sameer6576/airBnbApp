@@ -14,6 +14,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
@@ -38,6 +39,10 @@ public class WebSecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        // Liveness and readiness probes run before any credential
+                        // is available. Only health is open — every other actuator
+                        // endpoint falls through to the denyAll below.
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/hotels/search").permitAll()
                         .requestMatchers(HttpMethod.GET, "/hotels/*/info").permitAll()
@@ -57,8 +62,9 @@ public class WebSecurityConfig {
                         .requestMatchers("/wishlists/**").authenticated()
                         .anyRequest().denyAll()
                 )
-                .exceptionHandling(exceptionHandlingConfig ->
-                        exceptionHandlingConfig.accessDeniedHandler(accessDeniedHandler()));
+                .exceptionHandling(exceptionHandlingConfig -> exceptionHandlingConfig
+                        .authenticationEntryPoint(authenticationEntryPoint())
+                        .accessDeniedHandler(accessDeniedHandler()));
 
         return httpSecurity.build();
     }
@@ -77,5 +83,17 @@ public class WebSecurityConfig {
     public AccessDeniedHandler accessDeniedHandler() {
         return (request, response, accessDeniedException) ->
                 handlerExceptionResolver.resolveException(request, response, null, accessDeniedException);
+    }
+
+    /**
+     * Without this Spring falls back to Http403ForbiddenEntryPoint, so a request
+     * with no credentials gets an empty 403. The SPA only attempts a token
+     * refresh on 401, which means an expired access token would never be
+     * refreshed even though the client implements it correctly.
+     */
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, authException) ->
+                handlerExceptionResolver.resolveException(request, response, null, authException);
     }
 }

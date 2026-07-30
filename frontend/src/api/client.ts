@@ -32,6 +32,27 @@ interface ApiResponse<T> {
   };
 }
 
+type AuthFailureListener = () => void;
+
+const authFailureListeners = new Set<AuthFailureListener>();
+
+/**
+ * Lets auth state react when a refresh fails. Clearing the token on its own is
+ * not enough: the provider would keep rendering a signed-in user who can no
+ * longer make a successful request.
+ */
+export function onAuthFailure(listener: AuthFailureListener): () => void {
+  authFailureListeners.add(listener);
+  return () => {
+    authFailureListeners.delete(listener);
+  };
+}
+
+function handleAuthFailure() {
+  setAccessToken(null);
+  authFailureListeners.forEach((listener) => listener());
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
@@ -43,7 +64,7 @@ async function tryRefresh(): Promise<boolean> {
           credentials: 'include',
         });
         if (!res.ok) {
-          setAccessToken(null);
+          handleAuthFailure();
           return false;
         }
         const body = (await res.json()) as ApiResponse<{ accessToken: string }>;
@@ -52,9 +73,10 @@ async function tryRefresh(): Promise<boolean> {
           setAccessToken(token);
           return true;
         }
+        handleAuthFailure();
         return false;
       } catch {
-        setAccessToken(null);
+        handleAuthFailure();
         return false;
       } finally {
         refreshing = null;

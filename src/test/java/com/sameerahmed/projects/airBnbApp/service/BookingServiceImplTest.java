@@ -1,7 +1,10 @@
 package com.sameerahmed.projects.airBnbApp.service;
 
+import com.sameerahmed.projects.airBnbApp.dto.BookingRequest;
 import com.sameerahmed.projects.airBnbApp.dto.GuestDto;
 import com.sameerahmed.projects.airBnbApp.entity.Booking;
+import com.sameerahmed.projects.airBnbApp.entity.Hotel;
+import com.sameerahmed.projects.airBnbApp.entity.Inventory;
 import com.sameerahmed.projects.airBnbApp.entity.User;
 import com.sameerahmed.projects.airBnbApp.entity.enums.BookingStatus;
 import com.sameerahmed.projects.airBnbApp.repository.*;
@@ -10,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,6 +26,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +54,7 @@ class BookingServiceImplTest {
     @Mock private InventoryService inventoryService;
     @Mock private ModelMapper modelMapper;
     @Mock private GuestRepository guestRepository;
+    @Mock private ProcessedStripeEventRepository processedStripeEventRepository;
     @Mock private CheckoutService checkoutService;
     @Mock private PricingService pricingService;
     @Mock private NotificationService notificationService;
@@ -96,6 +103,20 @@ class BookingServiceImplTest {
                 .build();
     }
 
+    /**
+     * Mirrors BookingServiceImpl.nightsCovered. The service now asserts that a
+     * lock covers every night and that each bulk update touches every night, so
+     * an unstubbed mock returning zero rows would look like a partial update.
+     */
+    private int nightsInFixture() {
+        return (int) ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
+    }
+
+    private void stubInventoryLock() {
+        when(inventoryRepository.lockStayRange(eq(5L), any(), any()))
+                .thenReturn(Collections.nCopies(nightsInFixture(), new Inventory()));
+    }
+
     @AfterEach
     void clearSecurity() {
         SecurityContextHolder.clearContext();
@@ -141,6 +162,7 @@ class BookingServiceImplTest {
         com.stripe.model.checkout.Session session =
                 org.mockito.Mockito.mock(com.stripe.model.checkout.Session.class);
 
+        when(event.getId()).thenReturn("evt_test_123");
         when(event.getType()).thenReturn("checkout.session.completed");
         when(event.getDataObjectDeserializer()).thenReturn(deserializer);
         when(deserializer.getObject()).thenReturn(Optional.of(session));
@@ -156,8 +178,11 @@ class BookingServiceImplTest {
     void expireStaleBookingsReleasesReservation() {
         booking.setHoldExpiresAt(LocalDateTime.now().minusMinutes(1));
 
-        when(bookingRepository.findByBookingStatusInAndHoldExpiresAtBefore(any(), any()))
+        when(bookingRepository.findExpiredHolds(any(), any(), any()))
                 .thenReturn(List.of(booking));
+        stubInventoryLock();
+        when(inventoryRepository.cancelReservation(eq(5L), any(), any(), eq(1)))
+                .thenReturn(nightsInFixture());
 
         bookingService.expireStaleBookings();
 
@@ -171,6 +196,9 @@ class BookingServiceImplTest {
         authenticate(owner);
         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        stubInventoryLock();
+        when(inventoryRepository.cancelReservation(eq(5L), any(), any(), eq(1)))
+                .thenReturn(nightsInFixture());
 
         bookingService.cancelPayment(10L);
 
@@ -185,16 +213,82 @@ class BookingServiceImplTest {
     void initiatePaymentsExtendsHoldAndAllowsReservedWithoutGuests() {
         authenticate(owner);
         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(checkoutService.getCheckoutSession(any(), any(), any())).thenReturn("https://checkout.stripe.test");
+        when(checkoutService.getCheckoutSession(any(), any(), any()))
+                .thenReturn(new CheckoutService.CheckoutSession("cs_test_1", "https://checkout.stripe.test"));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         LocalDateTime before = LocalDateTime.now();
         String url = bookingService.initiatePayments(10L);
 
         assertEquals("https://checkout.stripe.test", url);
+        // The session id must be persisted by the caller, inside its transaction.
+        assertEquals("cs_test_1", booking.getPaymentSessionId());
         assertEquals(BookingStatus.PAYMENT_PENDING, booking.getBookingStatus());
         assertTrue(booking.getHoldExpiresAt().isAfter(before.plusMinutes(25)));
         assertFalse(booking.getExpiryWarningSent());
+    }
+
+    /**
+     * Pins the check-out convention. A stay of the 1st to the 2nd is one night: it
+     * must reserve exactly one inventory row and be charged for exactly one night,
+     * leaving the 2nd on sale for the next guest.
+     */
+    @Test
+    void oneNightStayReservesExactlyOneNight() {
+        authenticate(owner);
+        LocalDate checkIn = LocalDate.now().plusDays(3);
+        LocalDate checkOut = checkIn.plusDays(1);
+
+        BookingRequest request = new BookingRequest();
+        request.setHotelId(7L);
+        request.setRoomId(5L);
+        request.setCheckInDate(checkIn);
+        request.setCheckOutDate(checkOut);
+        request.setRoomsCount(1);
+
+        Hotel hotel = new Hotel();
+        hotel.setId(7L);
+        room.setHotel(hotel);
+
+        when(hotelRepository.findById(7L)).thenReturn(Optional.of(hotel));
+        when(roomRepository.findById(5L)).thenReturn(Optional.of(room));
+        when(inventoryRepository.findAndLockAvailableInventory(5L, checkIn, checkOut, 1))
+                .thenReturn(List.of(new Inventory()));
+        when(inventoryRepository.initBooking(5L, checkIn, checkOut, 1)).thenReturn(1);
+        when(pricingService.calculateTotalPrice(any())).thenReturn(BigDecimal.valueOf(120));
+        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.initialiseBooking(request);
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(saved.capture());
+        assertEquals(BigDecimal.valueOf(120), saved.getValue().getAmount());
+        verify(inventoryRepository).initBooking(5L, checkIn, checkOut, 1);
+    }
+
+    @Test
+    void bookingRejectedWhenRoomBelongsToAnotherHotel() {
+        authenticate(owner);
+        LocalDate checkIn = LocalDate.now().plusDays(3);
+
+        BookingRequest request = new BookingRequest();
+        request.setHotelId(7L);
+        request.setRoomId(5L);
+        request.setCheckInDate(checkIn);
+        request.setCheckOutDate(checkIn.plusDays(2));
+        request.setRoomsCount(1);
+
+        Hotel requested = new Hotel();
+        requested.setId(7L);
+        Hotel actualOwner = new Hotel();
+        actualOwner.setId(99L);
+        room.setHotel(actualOwner);
+
+        when(hotelRepository.findById(7L)).thenReturn(Optional.of(requested));
+        when(roomRepository.findById(5L)).thenReturn(Optional.of(room));
+
+        assertThrows(IllegalArgumentException.class, () -> bookingService.initialiseBooking(request));
+        verify(inventoryRepository, never()).initBooking(anyLong(), any(), any(), anyInt());
     }
 
     @Test

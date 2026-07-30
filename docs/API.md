@@ -13,14 +13,15 @@ Responses come back in `ApiResponse` (`timeStamp`, `data`, `error`).
 ```
 POST /auth/signup
 POST /auth/login          → access token + refreshToken cookie
-POST /auth/refresh
+POST /auth/refresh        → new access token (uses refresh cookie)
+POST /auth/logout         → clears refresh cookie
 ```
 
 ### Browse (mostly public)
 
 ```
 POST /hotels/search
-GET  /hotels/{hotelId}/info
+GET  /hotels/{hotelId}/info      # active hotels only
 GET  /hotels/{hotelId}/reviews
 ```
 
@@ -30,12 +31,14 @@ GET  /hotels/{hotelId}/reviews
 POST   /bookings/init                    # optional Idempotency-Key
 POST   /bookings/{id}/addGuests          # optional; also ok after payment started
 PUT    /bookings/{id}/guests
-PATCH  /bookings/{id}/dates
-POST   /bookings/{id}/payments           # guests not required; extends hold
-GET    /bookings/{id}/status
+PATCH  /bookings/{id}/dates              # unpaid only (RESERVED / GUEST_ADDED)
+POST   /bookings/{id}/payments           # → { id, url }; guests not required; extends hold
+GET    /bookings/{id}/status             # includes holdExpiresAt, refundAmount when set
 GET    /bookings/{id}/cancellation-quote # $0 if unpaid
 POST   /bookings/{id}/cancel             # unpaid or confirmed
 ```
+
+Booking statuses you will see: `RESERVED`, `GUEST_ADDED`, `PAYMENT_PENDING`, `CONFIRMED`, `CANCELLED`, `EXPIRED`, `REFUNDED`.
 
 ### Guests / profile / wishlist
 
@@ -64,7 +67,7 @@ GET  /users/myReviews
 
 ```
 POST|GET          /admin/hotels
-GET|PUT|DELETE    /admin/hotels/{hotelId}
+GET|PUT|DELETE    /admin/hotels/{hotelId}   # delete refused while live bookings exist
 PATCH             /admin/hotels/{hotelId}/activate
 GET               /admin/hotels/{hotelId}/bookings
 GET               /admin/hotels/{hotelId}/reports
@@ -92,6 +95,16 @@ POST /admin/users/{userId}/promote-manager
 
 ```
 POST /webhook/payment
+```
+
+Handles `checkout.session.completed` and `checkout.session.expired`. Events are deduplicated by Stripe event id.
+
+### Ops
+
+```
+GET /actuator/health              # public; readiness includes db
+GET /actuator/health/liveness
+GET /actuator/health/readiness
 ```
 
 ---

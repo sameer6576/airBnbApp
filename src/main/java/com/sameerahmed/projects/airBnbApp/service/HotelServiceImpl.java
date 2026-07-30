@@ -6,9 +6,15 @@ import com.sameerahmed.projects.airBnbApp.dto.RoomDto;
 import com.sameerahmed.projects.airBnbApp.entity.Hotel;
 import com.sameerahmed.projects.airBnbApp.entity.Room;
 import com.sameerahmed.projects.airBnbApp.entity.User;
+import com.sameerahmed.projects.airBnbApp.entity.enums.BookingStatus;
 import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
+import com.sameerahmed.projects.airBnbApp.repository.BookingRepository;
+import com.sameerahmed.projects.airBnbApp.repository.HotelMinPriceRepository;
 import com.sameerahmed.projects.airBnbApp.repository.HotelRepository;
+import com.sameerahmed.projects.airBnbApp.repository.InventoryRepository;
+import com.sameerahmed.projects.airBnbApp.repository.ReviewRepository;
 import com.sameerahmed.projects.airBnbApp.repository.RoomRepository;
+import com.sameerahmed.projects.airBnbApp.repository.WishlistRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
@@ -28,10 +34,23 @@ import static com.sameerahmed.projects.airBnbApp.util.AppUtils.getCurrentUser;
 @RequiredArgsConstructor
 public class HotelServiceImpl implements HotelService {
 
+    /** Statuses that represent an outstanding obligation to a guest. */
+    private static final List<BookingStatus> LIVE_BOOKING_STATUSES = List.of(
+            BookingStatus.RESERVED,
+            BookingStatus.GUEST_ADDED,
+            BookingStatus.PAYMENT_PENDING,
+            BookingStatus.CONFIRMED
+    );
+
     private final HotelRepository hotelRepository;
     private final InventoryService inventoryService;
     private final ModelMapper modelMapper;
     private final RoomRepository roomRepository;
+    private final BookingRepository bookingRepository;
+    private final ReviewRepository reviewRepository;
+    private final WishlistRepository wishlistRepository;
+    private final HotelMinPriceRepository hotelMinPriceRepository;
+    private final InventoryRepository inventoryRepository;
 
     @Override
     public HotelDto createNewHotel(HotelDto hotelDto) {
@@ -64,6 +83,7 @@ public class HotelServiceImpl implements HotelService {
     }
 
     @Override
+    @Transactional
     public HotelDto updateHotelById(Long id, HotelDto hotelDto) {
         Hotel hotel = hotelRepository.findById(id)
                 .orElseThrow(() ->
@@ -74,11 +94,22 @@ public class HotelServiceImpl implements HotelService {
         if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
             throw new AccessDeniedException("This user does not own this hotel with id: " + id);
         }
+        String previousCity = hotel.getCity();
+
         modelMapper.map(hotelDto, hotel);
         hotel.setAmenities(hotelDto.getAmenities());
         hotel.setPhotos(hotelDto.getPhotos());
         hotel.setId(id);
         hotel = hotelRepository.save(hotel);
+
+        // Inventory keeps a denormalised copy of the city for search. Left stale, the
+        // hotel disappears from results for its new city and still matches the old.
+        if (!Objects.equals(previousCity, hotel.getCity())) {
+            int rows = inventoryRepository.updateCityForHotel(hotel.getId(), hotel.getCity());
+            log.info("Hotel {} moved from {} to {}; updated {} inventory rows",
+                    id, previousCity, hotel.getCity(), rows);
+        }
+
         return modelMapper.map(hotel, HotelDto.class);
     }
 
@@ -93,6 +124,24 @@ public class HotelServiceImpl implements HotelService {
         if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
             throw new AccessDeniedException("This user does not own this hotel with id: " + id);
         }
+
+        // A live hold or a confirmed stay is somebody's reservation and, in the
+        // confirmed case, a payment record. Refusing is the only safe answer:
+        // cascading the delete would erase a guest's booking without telling them.
+        if (bookingRepository.existsByHotelAndBookingStatusIn(hotel, LIVE_BOOKING_STATUSES)) {
+            throw new IllegalStateException(
+                    "Hotel " + id + " has active or confirmed bookings and cannot be deleted");
+        }
+
+        // Order matters: every one of these has a non-null foreign key to the rows
+        // deleted after it. The previous implementation removed only inventory and
+        // rooms, so deleting a hotel that had ever been booked failed on a raw
+        // constraint violation surfaced as a 500.
+        reviewRepository.deleteByHotel(hotel);
+        wishlistRepository.deleteByHotel(hotel);
+        bookingRepository.deleteByHotel(hotel);
+        hotelMinPriceRepository.deleteByHotel(hotel);
+
         for (Room room : hotel.getRooms()) {
             inventoryService.deleteAllInventories(room);
             roomRepository.deleteById(room.getId());
@@ -112,12 +161,12 @@ public class HotelServiceImpl implements HotelService {
         if (!Objects.equals(user.getId(), hotel.getOwner().getId())) {
             throw new AccessDeniedException("This user does not own this hotel with id: " + id);
         }
+        // Idempotent by construction: activating twice tops up whatever is missing
+        // rather than regenerating a fixed year and colliding with the inventory
+        // unique constraint, which used to surface as a 500.
         hotel.setActive(true);
-//        assuming only done once
-        for (Room room : hotel.getRooms()) {
-            inventoryService.initializeRoomForAYear(room);
-        }
-
+        hotelRepository.save(hotel);
+        inventoryService.refreshHotelInventory(hotel);
     }
 
     @Override
@@ -125,6 +174,14 @@ public class HotelServiceImpl implements HotelService {
         Hotel hotel = hotelRepository
                 .findById(hotelId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with id: " + hotelId));
+
+        // This endpoint is public. Unpublished hotels are drafts, and the payload
+        // includes contactInfo, so an inactive hotel must look absent rather than
+        // merely be absent from search.
+        if (!Boolean.TRUE.equals(hotel.getActive())) {
+            throw new ResourceNotFoundException("Hotel not found with id: " + hotelId);
+        }
+
         List<RoomDto> rooms = hotel.getRooms()
                 .stream()
                 .map((element) -> modelMapper.map(element, RoomDto.class))

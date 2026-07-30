@@ -17,6 +17,19 @@ import java.util.Set;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(
+        name = "booking",
+        indexes = {
+                // Looked up on every Stripe webhook delivery.
+                @Index(name = "idx_booking_payment_session", columnList = "payment_session_id"),
+                // The predicate both scheduled jobs run on.
+                @Index(name = "idx_booking_status_hold", columnList = "booking_status, hold_expires_at"),
+                // Foreign keys are not indexed automatically by Postgres, and both
+                // of these back list endpoints: myBookings and bookings-by-hotel.
+                @Index(name = "idx_booking_user", columnList = "user_id"),
+                @Index(name = "idx_booking_hotel", columnList = "hotel_id")
+        }
+)
 public class Booking {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

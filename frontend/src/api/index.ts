@@ -27,7 +27,15 @@ export const authApi = {
     setAccessToken(data.accessToken);
     return data;
   },
-  logout: () => setAccessToken(null),
+  // The refresh token is an httpOnly cookie, so only the server can clear it.
+  // Dropping the access token alone would leave the session resumable.
+  logout: async () => {
+    try {
+      await apiFetch<void>('/auth/logout', { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+    }
+  },
 };
 
 export const userApi = {

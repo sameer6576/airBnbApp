@@ -17,7 +17,17 @@ import java.time.LocalDateTime;
         uniqueConstraints = @UniqueConstraint(
                 name = "unique_hotel_root_date",
                 columnNames = {"hotel_id", "room_id", "date"}
-        )
+        ),
+        indexes = {
+                // Search filters on city and date. The unique constraint above is
+                // left-anchored on hotel_id, so Postgres cannot use it for that —
+                // without this index the busiest endpoint is a sequential scan over
+                // roughly 366 rows per room per year.
+                @Index(name = "idx_inventory_city_date", columnList = "city, date"),
+                // Every booking-path query is keyed on room plus a date range, and
+                // Postgres does not index foreign keys automatically.
+                @Index(name = "idx_inventory_room_date", columnList = "room_id, date")
+        }
 )
 @Builder
 @NoArgsConstructor
@@ -50,7 +60,11 @@ public class Inventory {
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal surgeFactor;
 
-    @Column(nullable = false, precision = 6, scale = 2)
+    // Matches Room.basePrice and Booking.amount. At precision 6 this capped a
+    // nightly rate at 9999.99, so surge, occupancy, urgency and holiday
+    // multipliers compounding over a base price could overflow the column and
+    // abort the whole repricing batch for that hotel.
+    @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price; // basePrice * surgeFactor
 
     @Column(nullable = false)

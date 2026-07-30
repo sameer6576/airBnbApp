@@ -1,17 +1,16 @@
 package com.sameerahmed.projects.airBnbApp.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.sameerahmed.projects.airBnbApp.entity.enums.Gender;
 import com.sameerahmed.projects.airBnbApp.entity.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.Fetch;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDate;
 import java.util.Collection;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -28,6 +27,9 @@ public class User implements UserDetails {
     @Column(unique = true,nullable = false)
     private String email;
 
+    // Backstop: the entity should never reach a response body, but if it does,
+    // the hash must not go with it.
+    @JsonIgnore
     @Column(nullable = false)
     private String password; // encoded password
 

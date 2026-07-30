@@ -8,7 +8,8 @@ import lombok.Data;
 import java.time.LocalDate;
 
 @Data
-@ValidDateRange(startField = "checkInDate", endField = "checkOutDate")
+@ValidDateRange(startField = "checkInDate", endField = "checkOutDate", allowEqual = false,
+        message = "check-out date must be after check-in date")
 public class BookingRequest {
     @NotNull
     private Long hotelId;

@@ -47,12 +47,14 @@ class InventoryServiceSearchTest {
         request.setPage(0);
         request.setSize(10);
 
+        // Aug 10 to Aug 12 is two nights, not three days: the check-out date is not
+        // occupied, so search must require availability on the 10th and 11th only.
         when(hotelMinPriceRepository.findHotelWithAvailableInventory(
                 eq("New York"),
                 eq(LocalDate.of(2026, 8, 10)),
                 eq(LocalDate.of(2026, 8, 12)),
                 eq(2),
-                eq(3L),
+                eq(2L),
                 eq(BigDecimal.valueOf(50)),
                 eq(BigDecimal.valueOf(300)),
                 eq(4.0),
@@ -67,7 +69,7 @@ class InventoryServiceSearchTest {
                 eq(LocalDate.of(2026, 8, 10)),
                 eq(LocalDate.of(2026, 8, 12)),
                 eq(2),
-                eq(3L),
+                eq(2L),
                 eq(BigDecimal.valueOf(50)),
                 eq(BigDecimal.valueOf(300)),
                 eq(4.0),

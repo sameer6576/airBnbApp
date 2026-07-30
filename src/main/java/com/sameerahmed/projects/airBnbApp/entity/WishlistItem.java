@@ -10,7 +10,13 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @Setter
-@Table(name = "wishlist_item", uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "hotel_id"}))
+@Table(
+        name = "wishlist_item",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "hotel_id"}),
+        // The (user_id, hotel_id) unique constraint already serves lookups by user,
+        // being left-anchored on it. Only the reverse direction needs its own index.
+        indexes = @Index(name = "idx_wishlist_hotel", columnList = "hotel_id")
+)
 public class WishlistItem {
 
     @Id

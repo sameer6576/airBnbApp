@@ -1,6 +1,7 @@
 package com.sameerahmed.projects.airBnbApp.security;
 
 import com.sameerahmed.projects.airBnbApp.entity.User;
+import com.sameerahmed.projects.airBnbApp.exception.ResourceNotFoundException;
 import com.sameerahmed.projects.airBnbApp.service.UserService;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -23,6 +24,8 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JWTAuthFilter extends OncePerRequestFilter {
 
+    private static final String BEARER_PREFIX = "Bearer ";
+
     private final JWTService jwtService;
     private final UserService userService;
 
@@ -33,32 +36,38 @@ public class JWTAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
 
-        try {
-            final String requestTokenHeader = request.getHeader("Authorization");
-            if (requestTokenHeader == null || !requestTokenHeader.startsWith("Bearer")) {
-                filterChain.doFilter(request, response);
-                return;
-            }
+        final String requestTokenHeader = request.getHeader("Authorization");
+        if (requestTokenHeader == null || !requestTokenHeader.startsWith(BEARER_PREFIX)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-            String token = requestTokenHeader.split("Bearer ")[1];
-            Long userId = jwtService.getUserIdFromToken(token);
+        // Only token handling belongs in the try. Wrapping the rest of the chain
+        // would let a controller's own exceptions be misreported as auth failures.
+        try {
+            String token = requestTokenHeader.substring(BEARER_PREFIX.length());
+            Long userId = jwtService.getUserIdFromAccessToken(token);
 
             if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 User user = userService.getUserById(userId);
-                // check if the user should be allowed
                 UsernamePasswordAuthenticationToken authenticationToken =
                         new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
                 authenticationToken.setDetails(
                         new WebAuthenticationDetailsSource().buildDetails(request)
                 );
                 SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-
             }
-            filterChain.doFilter(request, response);
         } catch (JwtException e) {
             handlerExceptionResolver.resolveException(request, response, null, e);
+            return;
+        } catch (ResourceNotFoundException e) {
+            // A correctly signed token for a user that no longer exists is an
+            // authentication failure, not a missing resource.
+            handlerExceptionResolver.resolveException(request, response, null,
+                    new JwtException("Token refers to a user that no longer exists"));
+            return;
         }
 
-
+        filterChain.doFilter(request, response);
     }
 }

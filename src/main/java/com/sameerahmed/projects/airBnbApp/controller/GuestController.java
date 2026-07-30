@@ -4,6 +4,7 @@ import com.sameerahmed.projects.airBnbApp.dto.GuestDto;
 import com.sameerahmed.projects.airBnbApp.service.GuestService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +22,7 @@ public class GuestController {
     private final GuestService guestService;
 
     @PostMapping
-    public ResponseEntity<GuestDto> createGuest(@RequestBody GuestDto guestDto) {
+    public ResponseEntity<GuestDto> createGuest(@Valid @RequestBody GuestDto guestDto) {
         return new ResponseEntity<>(guestService.createGuest(guestDto), HttpStatus.CREATED);
     }
 
@@ -31,7 +32,7 @@ public class GuestController {
     }
 
     @PutMapping("/{guestId}")
-    public ResponseEntity<GuestDto> updateGuest(@PathVariable Long guestId, @RequestBody GuestDto guestDto) {
+    public ResponseEntity<GuestDto> updateGuest(@PathVariable Long guestId, @Valid @RequestBody GuestDto guestDto) {
         return ResponseEntity.ok(guestService.updateGuest(guestId, guestDto));
     }
 

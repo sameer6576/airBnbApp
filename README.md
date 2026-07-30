@@ -7,6 +7,9 @@ Spring Boot API for hotel search + booking, plus a React UI (**Stayline**) in [`
 
 ## Docs
 
+- [docs/COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md) — **one-shot: entire project explained**
+- [docs/INTERVIEW.md](docs/INTERVIEW.md) — SDE2 interview walkthrough
+- [docs/INTERVIEW_QUESTIONS.md](docs/INTERVIEW_QUESTIONS.md) — interview Q&A around this project
 - [docs/SETUP.md](docs/SETUP.md) — Postgres, properties, Stripe, frontend
 - [frontend/README.md](frontend/README.md) — Stayline UI
 - [docs/FLOWS.md](docs/FLOWS.md) — walkthroughs
@@ -22,9 +25,7 @@ Java 21, Spring Boot 4.1, Security + JWT, JPA/Postgres, Stripe Checkout, ModelMa
 ## Quick start
 
 1. Create a Postgres DB named `airBnb`
-2. Configure `src/main/resources/application.properties` (gitignored — see SETUP). Include:
-   - `frontend.url=http://localhost:5173`
-   - `app.seed.enabled=true` (optional)
+2. `cp src/main/resources/application-dev.properties.example src/main/resources/application-dev.properties` and fill in your DB password, a 32+ char `jwt.secretKey`, and Stripe test keys. That file is gitignored; shared settings already live in `application.properties`. See [SETUP](docs/SETUP.md).
 3. API: `mvnw.cmd spring-boot:run`
 4. UI: `cd frontend && npm install && npm run dev`
 
@@ -41,9 +42,9 @@ Signup creates a normal `GUEST`. Admin can promote someone to manager via `POST 
 
 ## How it roughly works
 
-Managers create a hotel + rooms, then activate (that spins up ~a year of inventory). Guests search, init a booking (soft-reserves inventory), add guests, pay through Stripe. Unpaid holds die after ~10 minutes. There's also wishlist, reviews after checkout, cancel/refund rules, and a couple of admin reports.
+Managers create a hotel + rooms, then activate (that spins up ~a year of inventory). Guests search, init a booking (soft-reserves inventory), optionally add guests, pay through Stripe. Unpaid holds die after ~10 minutes (payment extends to ~30). There's also wishlist, reviews after checkout, cancel/refund rules, late-payment auto-refund (`REFUNDED`), and admin reports.
 
-Access token goes in `Authorization: Bearer …`. Login also sets a `refreshToken` cookie for `/auth/refresh`. Tokens expire pretty fast (~10 min) so use refresh.
+Access token goes in `Authorization: Bearer …`. Login also sets a `refreshToken` cookie for `/auth/refresh`; `POST /auth/logout` clears it. Tokens expire pretty fast (~10 min) so use refresh.
 
 Responses are wrapped:
 
@@ -67,6 +68,8 @@ advice/       ApiResponse + exception handler
 
 ## Caveats
 
-- No UI, no Flyway/Docker/CI baked in
+- No Flyway/Docker/CI baked in. `ddl-auto` is doing the schema, which means a column type or constraint change needs one boot with `ddl-auto=create`.
+- Scheduled jobs assume a single instance — there's no distributed lock, so two replicas would duplicate the pricing sweep.
 - Holidays are just `MM-dd` strings in config, not a real calendar API
-- Postgres `TEXT[]` for photos/amenities — don't expect H2 to love a full context test
+- Postgres `TEXT[]` for photos/amenities — don't expect H2 to love a full context test, which is why the context test is `@Disabled`
+- Search filters and sorts in memory after loading the matching set, then pages. Fine at this size, not at scale.

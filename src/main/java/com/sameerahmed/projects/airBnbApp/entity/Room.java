@@ -13,7 +13,10 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @Setter
-@Table(name = "room")
+@Table(
+        name = "room",
+        indexes = @Index(name = "idx_room_hotel", columnList = "hotel_id")
+)
 public class Room {
 
     @Id

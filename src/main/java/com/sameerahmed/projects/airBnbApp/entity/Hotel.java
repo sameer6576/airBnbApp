@@ -13,7 +13,14 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
-@Table(name = "hotel")
+@Table(
+        name = "hotel",
+        indexes = {
+                @Index(name = "idx_hotel_owner", columnList = "owner_id"),
+                // Search is always scoped to a city and to active hotels.
+                @Index(name = "idx_hotel_city_active", columnList = "city, active")
+        }
+)
 public class Hotel {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

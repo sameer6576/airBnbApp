@@ -17,4 +17,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     boolean existsByBooking(Booking booking);
 
     List<Review> findByUser(User user);
+
+    void deleteByHotel(Hotel hotel);
 }

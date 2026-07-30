@@ -10,7 +10,14 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @Setter
-@Table(name = "review", uniqueConstraints = @UniqueConstraint(columnNames = "booking_id"))
+@Table(
+        name = "review",
+        uniqueConstraints = @UniqueConstraint(columnNames = "booking_id"),
+        indexes = {
+                @Index(name = "idx_review_hotel", columnList = "hotel_id"),
+                @Index(name = "idx_review_user", columnList = "user_id")
+        }
+)
 public class Review {
 
     @Id
