@@ -1,0 +1,39 @@
+# Copy to application-dev.properties and fill in. That file is git-ignored.
+# Shared settings live in application.properties; only override here.
+
+# --- Database -----------------------------------------------------------------
+# Create the database first: CREATE DATABASE "airBnb";
+spring.datasource.url=jdbc:postgresql://localhost:5432/airBnb
+spring.datasource.username=postgres
+spring.datasource.password=CHANGE_ME
+
+# --- Schema -------------------------------------------------------------------
+# `update` for day-to-day work. Switch to `create` for a single boot when a
+# column type or constraint changes, since `update` only ever adds — then switch
+# back, because `create` wipes hotels, rooms and generated inventory on restart.
+spring.jpa.hibernate.ddl-auto=update
+
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# --- Auth ---------------------------------------------------------------------
+# At least 32 characters. Generate with: openssl rand -base64 48
+jwt.secretKey=CHANGE_ME_AT_LEAST_32_CHARACTERS_LONG
+jwt.access-token-validity=10m
+jwt.refresh-token-validity=7d
+app.cookie.secure=true
+
+# --- Frontend -----------------------------------------------------------------
+# The Vite dev server origin, not the API port.
+frontend.url=http://localhost:5173
+app.cors.allowed-origins=http://localhost:5173
+
+# --- Stripe -------------------------------------------------------------------
+# Test-mode keys from the Stripe dashboard. The webhook secret comes from
+# `stripe listen --forward-to localhost:8080/api/v1/webhook/payment`.
+stripe.secret.key=sk_test_CHANGE_ME
+stripe.webhook.secret=whsec_CHANGE_ME
+
+# --- Seed data ----------------------------------------------------------------
+# Creates manager@example.com / Manager@123 and admin@example.com / Admin@123.
+app.seed.enabled=true
