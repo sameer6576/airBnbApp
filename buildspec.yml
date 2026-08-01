@@ -4,6 +4,10 @@ phases:
   install:
     runtime-versions:
       java: corretto21
+  pre_build:
+    commands:
+      - echo Logging in to Docker Hub...
+      - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
   build:
     commands:
       - echo Building, Testing and packaging the application...
