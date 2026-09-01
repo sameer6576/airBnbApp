@@ -20,7 +20,7 @@ Spring Boot API for hotel search + booking, plus a React UI (**Stayline**) in [`
 
 ## Stack
 
-Java 21, Spring Boot 4.1, Security + JWT, JPA/Postgres, Stripe Checkout, ModelMapper, springdoc. UI: React + Vite + TypeScript. Maven wrapper in the repo (`mvnw` / `mvnw.cmd`).
+Java 21, Spring Boot 4.1, Security + JWT, JPA/Postgres, Flyway, Stripe Checkout, ModelMapper, springdoc. UI: React + Vite + TypeScript. Maven wrapper in the repo (`mvnw` / `mvnw.cmd`).
 
 ## Quick start
 
@@ -68,7 +68,7 @@ advice/       ApiResponse + exception handler
 
 ## Caveats
 
-- No Flyway/Docker/CI baked in. `ddl-auto` is doing the schema, which means a column type or constraint change needs one boot with `ddl-auto=create`.
+- No Docker/CI baked in. Schema changes go through Flyway (`src/main/resources/db/migration`); Hibernate `ddl-auto=validate` will not start against a mismatch.
 - Scheduled jobs assume a single instance — there's no distributed lock, so two replicas would duplicate the pricing sweep.
 - Holidays are just `MM-dd` strings in config, not a real calendar API
 - Postgres `TEXT[]` for photos/amenities — don't expect H2 to love a full context test, which is why the context test is `@Disabled`

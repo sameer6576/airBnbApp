@@ -8,10 +8,9 @@ spring.datasource.username=postgres
 spring.datasource.password=CHANGE_ME
 
 # --- Schema -------------------------------------------------------------------
-# `update` for day-to-day work. Switch to `create` for a single boot when a
-# column type or constraint changes, since `update` only ever adds — then switch
-# back, because `create` wipes hotels, rooms and generated inventory on restart.
-spring.jpa.hibernate.ddl-auto=update
+# Inherited: Flyway migrations + Hibernate `validate`. Do not set ddl-auto=create
+# here — that drops the database on every restart. Schema changes go in
+# src/main/resources/db/migration as a new versioned script.
 
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true

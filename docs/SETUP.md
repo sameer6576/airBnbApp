@@ -8,7 +8,11 @@ Need JDK 21 and Postgres. Maven wrapper is already in the project.
 CREATE DATABASE "airBnb";
 ```
 
-Hibernate `ddl-auto=update` creates and updates tables on startup. Fine for local; don't treat it as a prod migration strategy — it only ever adds, so it will not change a column's type or add a constraint to an existing table. When you change one of those, run once with `ddl-auto=create` and then switch back.
+Flyway owns the schema. Scripts live in `src/main/resources/db/migration/`; `V1__baseline_schema.sql` creates the current tables. Hibernate then runs with `ddl-auto=validate` and refuses to start if the database does not match the entities.
+
+Add a new versioned file (`V2__…sql`) for any later column, index or constraint change. Do not set `ddl-auto=create` — that drops data on restart.
+
+If this database already has tables from the old Hibernate `ddl-auto` setup, the first boot baselines at V1 and does not re-run CREATE TABLE. For a clean start: `DROP DATABASE "airBnb"; CREATE DATABASE "airBnb";`
 
 ## Config
 
@@ -59,7 +63,7 @@ Port 8080, context `/api/v1`.
 - OpenAPI JSON: http://localhost:8080/api/v1/v3/api-docs  
 - Stayline UI: see [frontend/README.md](../frontend/README.md) (`npm run dev` → http://localhost:5173)
 
-In Swagger hit Authorize and paste `Bearer <accessToken>`.
+The Swagger UI page itself is public. Endpoints are not: call `POST /auth/login`, copy `data.accessToken`, hit **Authorize** and paste the raw token only. The scheme is `type: http, scheme: bearer`, so Swagger adds the `Bearer ` prefix itself — pasting `Bearer <token>` sends it twice and every call comes back 401.
 
 ## Frontend (Stayline)
 
